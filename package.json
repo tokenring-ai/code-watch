@@ -1,23 +1,23 @@
 {
-  "name": "@token-ring/code-watch",
-  "version": "0.1.0",
-  "dependencies": {
-    "@token-ring/ai-client": "0.1.0",
-    "@token-ring/chat": "0.1.0",
-    "@token-ring/eslint-config": "0.0.0",
-    "@token-ring/filesystem": "0.1.0",
-    "@token-ring/registry": "0.1.0",
-    "ignore": "^7.0.5"
-  },
-  "exports": {
-    ".": "./index.js",
-    "./*": "./*.js"
-  },
-  "private": true,
-  "scripts": {
-    "lint": "eslint ",
-    "test": "node_modules/.bin/vitest run",
-    "eslint": "eslint --fix ./"
-  },
-  "type": "module"
+	"name": "@token-ring/code-watch",
+	"version": "0.1.0",
+	"dependencies": {
+		"@token-ring/ai-client": "0.1.0",
+		"@token-ring/chat": "0.1.0",
+		"@token-ring/eslint-config": "0.0.0",
+		"@token-ring/filesystem": "0.1.0",
+		"@token-ring/registry": "0.1.0",
+		"ignore": "^7.0.5"
+	},
+	"exports": {
+		".": "./index.js",
+		"./*": "./*.js"
+	},
+	"private": true,
+	"scripts": {
+		"lint": "eslint ",
+		"test": "node_modules/.bin/vitest run",
+		"eslint": "eslint --fix ./"
+	},
+	"type": "module"
 }

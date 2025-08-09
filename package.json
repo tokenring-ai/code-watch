@@ -10,8 +10,8 @@
 		"ignore": "^7.0.5"
 	},
 	"exports": {
-		".": "./index.js",
-		"./*": "./*.js"
+		".": "./index.ts",
+		"./*": "./*.ts"
 	},
 	"license": "MIT",
 	"scripts": {

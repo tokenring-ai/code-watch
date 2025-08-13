@@ -45,7 +45,7 @@ The service looks for comment lines using either shell/Python style or C/JS styl
 Only AI! triggers an action at present. Example (JavaScript):
 
 ```js
-// AI! Refactor this function to use async/await and add proper error handling
+> // AI! Refactor this function to use async/await and add proper error handling
 function fetchData(cb) {
   doWork(function(err, res){
     if (err) return cb(err);
@@ -57,7 +57,7 @@ function fetchData(cb) {
 Python/bash style also works:
 
 ```py
-# AI! Improve the algorithm below for O(n log n) sorting
+> # AI! Improve the algorithm below for O(n log n) sorting
 ```
 
 Important: The LLM is instructed to remove any AI! lines when it writes the updated file.

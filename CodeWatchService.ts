@@ -1,7 +1,8 @@
-import { Service } from "@token-ring/registry";
+import {Registry, Service} from "@token-ring/registry";
 import FileSystemService from "@token-ring/filesystem/FileSystemService";
 import ChatService from "@token-ring/chat/ChatService";
 import { ModelRegistry, createChatRequest } from "@token-ring/ai-client";
+import {ChatInputMessage} from "@token-ring/ai-client/client/AIChatClient";
 
 // Minimal types to match the runtime behavior
 type Watcher = {
@@ -14,10 +15,6 @@ type FileSystemLike = {
   getFile: (path: string) => Promise<string | Buffer>;
 };
 
-type RegistryLike = {
-  getFirstServiceByType: (svc: any) => any;
-  requireFirstServiceByType: (svc: any) => any;
-};
 
 export default class CodeWatchService extends Service {
   name = "CodeWatchService";
@@ -26,7 +23,7 @@ export default class CodeWatchService extends Service {
 
   private watcher: Watcher | null;
   private fileSystem: FileSystemLike | null;
-  private registry!: RegistryLike;
+  private registry!: Registry;
 
   isProcessing = false;
   modifiedFiles: Set<string> = new Set();
@@ -41,7 +38,7 @@ export default class CodeWatchService extends Service {
    * Start the CodeWatchService
    * @param registry - The package registry
    */
-  async start(registry: RegistryLike): Promise<void> {
+  async start(registry: Registry): Promise<void> {
     this.registry = registry;
     this.fileSystem = registry.getFirstServiceByType(FileSystemService) as FileSystemLike | null;
 
@@ -229,13 +226,13 @@ export default class CodeWatchService extends Service {
     const fileContent = await this.fileSystem.getFile(filePath);
     const fileText = typeof fileContent === "string" ? fileContent : fileContent.toString();
 
-    const systemPrompt = {
+    const systemPrompt:ChatInputMessage = {
       role: "system",
       content:
         "When you output a file with file tool, you MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.",
     };
 
-    const input = [
+    const input:ChatInputMessage[] = [
       {
         role: "user",
         content: `
@@ -261,10 +258,10 @@ ${fileText}`.trim(),
 
     const request = await createChatRequest(
       { input, systemPrompt },
-      this.registry as any,
+      this.registry,
     );
 
-    const [output] = await client.textChat(request, this.registry as any);
+    const [output] = await client.textChat(request, this.registry);
 
     chatService.systemLine(`[CodeWatchService] Code modification complete:`);
     for (const line of String(output).split("\n")) {

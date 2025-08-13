@@ -15,9 +15,8 @@
 	},
 	"license": "MIT",
 	"scripts": {
-		"lint": "eslint ",
-		"test": "node_modules/.bin/vitest run",
-		"eslint": "eslint --fix ./"
+
+		"test": "node_modules/.bin/vitest run"
 	},
 	"type": "module"
 }

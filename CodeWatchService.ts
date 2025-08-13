@@ -1,7 +1,7 @@
 import {Registry, Service} from "@token-ring/registry";
 import FileSystemService from "@token-ring/filesystem/FileSystemService";
 import ChatService from "@token-ring/chat/ChatService";
-import { ModelRegistry, createChatRequest } from "@token-ring/ai-client";
+import {createChatRequest, ModelRegistry} from "@token-ring/ai-client";
 import {ChatInputMessage} from "@token-ring/ai-client/client/AIChatClient";
 
 // Minimal types to match the runtime behavior

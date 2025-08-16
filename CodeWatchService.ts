@@ -1,8 +1,8 @@
-import {Registry, Service} from "@token-ring/registry";
-import FileSystemService from "@token-ring/filesystem/FileSystemService";
-import ChatService from "@token-ring/chat/ChatService";
 import {createChatRequest, ModelRegistry} from "@token-ring/ai-client";
 import {ChatInputMessage} from "@token-ring/ai-client/client/AIChatClient";
+import ChatService from "@token-ring/chat/ChatService";
+import FileSystemService from "@token-ring/filesystem/FileSystemService";
+import {Registry, Service} from "@token-ring/registry";
 
 // Minimal types to match the runtime behavior
 type Watcher = {
@@ -20,13 +20,11 @@ export default class CodeWatchService extends Service {
   name = "CodeWatchService";
   description =
     "Provides CodeWatch functionality that monitors files for AI comments";
-
+  isProcessing = false;
+  modifiedFiles: Set<string> = new Set();
   private watcher: Watcher | null;
   private fileSystem: FileSystemLike | null;
   private registry!: Registry;
-
-  isProcessing = false;
-  modifiedFiles: Set<string> = new Set();
 
   constructor() {
     super();
@@ -226,13 +224,13 @@ export default class CodeWatchService extends Service {
     const fileContent = await this.fileSystem.getFile(filePath);
     const fileText = typeof fileContent === "string" ? fileContent : fileContent.toString();
 
-    const systemPrompt:ChatInputMessage = {
+    const systemPrompt: ChatInputMessage = {
       role: "system",
       content:
         "When you output a file with file tool, you MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.",
     };
 
-    const input:ChatInputMessage[] = [
+    const input: ChatInputMessage[] = [
       {
         role: "user",
         content: `
@@ -257,7 +255,7 @@ ${fileText}`.trim(),
     );
 
     const request = await createChatRequest(
-      { input, systemPrompt },
+      {input, systemPrompt},
       this.registry,
     );
 

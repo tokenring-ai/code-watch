@@ -4,6 +4,8 @@ import ChatService from "@token-ring/chat/ChatService";
 import FileSystemService from "@token-ring/filesystem/FileSystemService";
 import {Registry, Service} from "@token-ring/registry";
 
+const pkgName = "CodeWatchService";
+
 // Minimal types to match the runtime behavior
 type Watcher = {
   on: (event: string, cb: (...args: any[]) => void) => Watcher;
@@ -34,7 +36,6 @@ export default class CodeWatchService extends Service {
 
   /**
    * Start the CodeWatchService
-   * @param registry - The package registry
    */
   async start(registry: Registry): Promise<void> {
     this.registry = registry;
@@ -89,8 +90,6 @@ export default class CodeWatchService extends Service {
 
   /**
    * Handle file change events from the watcher
-   * @param eventType - 'add', 'change', or 'unlink'
-   * @param filePath - Path to the file (relative to rootDirectory)
    */
   onFileChanged(eventType: string, filePath: string): void {
     if (eventType === "add" || eventType === "change") {
@@ -120,7 +119,8 @@ export default class CodeWatchService extends Service {
       try {
         await this.processFileForAIComments(filePath);
       } catch (error) {
-        console.error(`Error processing file ${filePath}:`, error);
+        const chatService = this.registry.requireFirstServiceByType(ChatService);
+        chatService.errorLine(`[${pkgName}] Error processing file ${filePath}: ${error}`);
       }
     }
     this.isProcessing = false;
@@ -130,32 +130,24 @@ export default class CodeWatchService extends Service {
 
   /**
    * Process a file to look for AI comments
-   * @param filePath - Absolute path to the file
    */
   async processFileForAIComments(filePath: string): Promise<void> {
-    try {
-      if (!this.fileSystem) throw new Error("File system not initialized");
-      const content = await this.fileSystem.getFile(filePath);
-      const text = typeof content === "string" ? content : content.toString();
-      const lines = text.split("\n");
+    if (!this.fileSystem) throw new Error("File system not initialized");
+    const content = await this.fileSystem.getFile(filePath);
+    const text = typeof content === "string" ? content : content.toString();
+    const lines = text.split("\n");
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
 
-        // Check for Python/shell style comments (# ...)
-        if (line.startsWith("#")) {
-          await this.checkAndTriggerAIAction(line, filePath, i + 1);
-        }
-        // Check for C-style comments (// ...)
-        else if (line.startsWith("//")) {
-          await this.checkAndTriggerAIAction(line, filePath, i + 1);
-        }
+      // Check for Python/shell style comments (# ...)
+      if (line.startsWith("#")) {
+        await this.checkAndTriggerAIAction(line, filePath, i + 1);
       }
-    } catch (error) {
-      console.error(
-        `Error processing file ${filePath} for AI comments:`,
-        error,
-      );
+      // Check for C-style comments (// ...)
+      else if (line.startsWith("//")) {
+        await this.checkAndTriggerAIAction(line, filePath, i + 1);
+      }
     }
   }
 
@@ -211,9 +203,9 @@ export default class CodeWatchService extends Service {
    * @param lineNumber - Line number in the file
    */
   async triggerCodeModification(content: string, filePath: string, lineNumber: number): Promise<void> {
-    const chatService = this.registry.requireFirstServiceByType(ChatService) as any;
+    const chatService = this.registry.requireFirstServiceByType(ChatService);
     const modelRegistry =
-      this.registry.requireFirstServiceByType(ModelRegistry) as any;
+      this.registry.requireFirstServiceByType(ModelRegistry);
 
     chatService.systemLine(
       `[CodeWatchService] Code modification triggered from ${filePath}:${lineNumber}`,
@@ -274,7 +266,7 @@ ${fileText}`.trim(),
    * @param lineNumber - Line number in the file
    */
   async triggerQuestionAnswer(content: string, filePath: string, lineNumber: number): Promise<void> {
-    const chatService = this.registry.requireFirstServiceByType(ChatService) as any;
+    const chatService = this.registry.requireFirstServiceByType(ChatService);
     chatService.infoLine(
       `[CodeWatchService][AI?] Question answering noted from ${filePath}:${lineNumber}. This feature is not fully implemented yet.`,
     );
@@ -289,7 +281,7 @@ ${fileText}`.trim(),
    * @param lineNumber - Line number in the file
    */
   async noteAIComment(content: string, filePath: string, lineNumber: number): Promise<void> {
-    const chatService = this.registry.requireFirstServiceByType(ChatService) as any;
+    const chatService = this.registry.requireFirstServiceByType(ChatService);
     chatService.infoLine(
       `[CodeWatchService][AI] AI comment noted from ${filePath}:${lineNumber}. This feature is not fully implemented yet.`,
     );

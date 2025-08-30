@@ -17,6 +17,7 @@ type FileSystemLike = {
   getFile: (path: string) => Promise<string | Buffer>;
 };
 
+export type CodeWatchServiceOptions = {}
 
 export default class CodeWatchService extends Service {
   name = "CodeWatchService";
@@ -28,7 +29,7 @@ export default class CodeWatchService extends Service {
   private fileSystem: FileSystemLike | null;
   private registry!: Registry;
 
-  constructor() {
+  constructor(config: CodeWatchServiceOptions) {
     super();
     this.watcher = null;
     this.fileSystem = null;

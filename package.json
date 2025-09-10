@@ -1,11 +1,11 @@
 {
- "name": "@token-ring/code-watch",
+ "name": "@tokenring-ai/code-watch",
+ "description": "Service for watching code changes and triggering actions",
  "version": "0.1.0",
  "dependencies": {
-  "@token-ring/ai-client": "0.1.0",
-  "@token-ring/chat": "0.1.0",
-  "@token-ring/filesystem": "0.1.0",
-  "@token-ring/registry": "0.1.0",
+  "@tokenring-ai/ai-client": "0.1.0",
+  "@tokenring-ai/agent": "0.1.0",
+  "@tokenring-ai/filesystem": "0.1.0",
   "ignore": "^7.0.5"
  },
  "exports": {

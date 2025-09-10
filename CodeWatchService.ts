@@ -1,8 +1,8 @@
-import {createChatRequest, ModelRegistry} from "@token-ring/ai-client";
-import {ChatInputMessage} from "@token-ring/ai-client/client/AIChatClient";
-import ChatService from "@token-ring/chat/ChatService";
-import FileSystemService from "@token-ring/filesystem/FileSystemService";
-import {Registry, Service} from "@token-ring/registry";
+import {AgentTeam} from "@tokenring-ai/agent";
+import {TokenRingService} from "@tokenring-ai/agent/types";
+import {createChatRequest, ModelRegistry} from "@tokenring-ai/ai-client";
+import {ChatInputMessage} from "@tokenring-ai/ai-client/client/AIChatClient";
+import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 
 const pkgName = "CodeWatchService";
 
@@ -12,35 +12,32 @@ type Watcher = {
   close: () => Promise<void> | void;
 };
 
-type FileSystemLike = {
-  watch: (path: string, opts?: Record<string, any>) => Promise<Watcher> | Watcher;
-  getFile: (path: string) => Promise<string | Buffer>;
-};
+export type CodeWatchServiceOptions = {
+  agentTypes: {
+    codeModification: string;
+  }
+}
 
-export type CodeWatchServiceOptions = {}
-
-export default class CodeWatchService extends Service {
+export default class CodeWatchService implements TokenRingService {
   name = "CodeWatchService";
   description =
     "Provides CodeWatch functionality that monitors files for AI comments";
   isProcessing = false;
   modifiedFiles: Set<string> = new Set();
-  private watcher: Watcher | null;
-  private fileSystem: FileSystemLike | null;
-  private registry!: Registry;
+  private watcher!: Watcher;
+  private fileSystem!: FileSystemService;
+  private agentTeam!: AgentTeam;
+  private agentTypes: CodeWatchServiceOptions["agentTypes"];
 
   constructor(config: CodeWatchServiceOptions) {
-    super();
-    this.watcher = null;
-    this.fileSystem = null;
+    this.agentTypes = config.agentTypes
   }
 
   /**
    * Start the CodeWatchService
    */
-  async start(registry: Registry): Promise<void> {
-    this.registry = registry;
-    this.fileSystem = registry.getFirstServiceByType(FileSystemService) as FileSystemLike | null;
+  async start(agentTeam: AgentTeam): Promise<void> {
+    this.fileSystem = agentTeam.services.requireFirstItemByType(FileSystemService);
 
     // Start watching the root directory for changes
     await this.startWatching();
@@ -49,7 +46,7 @@ export default class CodeWatchService extends Service {
   /**
    * Stop the service and clean up resources
    */
-  async stop(_registry?: unknown): Promise<void> {
+  async stop(_agentTeam: AgentTeam): Promise<void> {
     await this.stopWatching();
   }
 
@@ -59,10 +56,6 @@ export default class CodeWatchService extends Service {
   async startWatching(): Promise<void> {
     if (this.watcher) {
       await this.watcher.close();
-    }
-
-    if (!this.fileSystem) {
-      throw new Error("No virtual file system provided for watching");
     }
 
     // Use the virtual file system's watch method to create a watcher
@@ -85,7 +78,6 @@ export default class CodeWatchService extends Service {
   async stopWatching(): Promise<void> {
     if (this.watcher) {
       await this.watcher.close();
-      this.watcher = null;
     }
   }
 
@@ -120,8 +112,7 @@ export default class CodeWatchService extends Service {
       try {
         await this.processFileForAIComments(filePath);
       } catch (error) {
-        const chatService = this.registry.requireFirstServiceByType(ChatService);
-        chatService.errorLine(`[${pkgName}] Error processing file ${filePath}: ${error}`);
+        this.agentTeam.serviceError(`[${pkgName}] Error processing file ${filePath}: ${error}`);
       }
     }
     this.isProcessing = false;
@@ -133,9 +124,9 @@ export default class CodeWatchService extends Service {
    * Process a file to look for AI comments
    */
   async processFileForAIComments(filePath: string): Promise<void> {
-    if (!this.fileSystem) throw new Error("File system not initialized");
-    const content = await this.fileSystem.getFile(filePath);
-    const text = typeof content === "string" ? content : content.toString();
+    const text = await this.fileSystem.getFile(filePath);
+    if (!text) return;
+
     const lines = text.split("\n");
 
     for (let i = 0; i < lines.length; i++) {
@@ -204,18 +195,16 @@ export default class CodeWatchService extends Service {
    * @param lineNumber - Line number in the file
    */
   async triggerCodeModification(content: string, filePath: string, lineNumber: number): Promise<void> {
-    const chatService = this.registry.requireFirstServiceByType(ChatService);
-    const modelRegistry =
-      this.registry.requireFirstServiceByType(ModelRegistry);
+    const fileText = await this.fileSystem.getFile(filePath);
+    if (!fileText) return;
+    const agent = await this.agentTeam.createAgent(this.agentTypes.codeModification);
 
-    chatService.systemLine(
-      `[CodeWatchService] Code modification triggered from ${filePath}:${lineNumber}`,
+    const modelRegistry = agent.requireFirstServiceByType(ModelRegistry);
+
+    this.agentTeam.serviceOutput(
+      `[CodeWatchService] Code modification triggered from ${filePath}:${lineNumber}, running a ${this.agentTypes.codeModification} agent`,
     );
-    chatService.systemLine(`[CodeWatchService] Instruction: ${content}`);
-
-    if (!this.fileSystem) throw new Error("File system not initialized");
-    const fileContent = await this.fileSystem.getFile(filePath);
-    const fileText = typeof fileContent === "string" ? fileContent : fileContent.toString();
+    agent.infoLine(`[CodeWatchService] Instruction: ${content}`);
 
     const systemPrompt: ChatInputMessage = {
       role: "system",
@@ -243,20 +232,20 @@ ${fileText}`.trim(),
       "auto:intelligence>=3,tools>=2",
     );
 
-    chatService.systemLine(
+    agent.infoLine(
       `[CodeWatchService] Using model ${client.getModelId()}`,
     );
 
     const request = await createChatRequest(
       {input, systemPrompt},
-      this.registry,
+      agent,
     );
 
-    const [output] = await client.textChat(request, this.registry);
+    const [output] = await client.textChat(request, agent);
 
-    chatService.systemLine(`[CodeWatchService] Code modification complete:`);
+    agent.infoLine(`[CodeWatchService] Code modification complete:`);
     for (const line of String(output).split("\n")) {
-      chatService.systemLine(`[CodeWatchService] ${line}`);
+      agent.infoLine(`[CodeWatchService] ${line}`);
     }
   }
 
@@ -267,11 +256,10 @@ ${fileText}`.trim(),
    * @param lineNumber - Line number in the file
    */
   async triggerQuestionAnswer(content: string, filePath: string, lineNumber: number): Promise<void> {
-    const chatService = this.registry.requireFirstServiceByType(ChatService);
-    chatService.infoLine(
+    this.agentTeam.serviceOutput(
       `[CodeWatchService][AI?] Question answering noted from ${filePath}:${lineNumber}. This feature is not fully implemented yet.`,
     );
-    chatService.infoLine(`[CodeWatchService] Question: ${content}`);
+    this.agentTeam.serviceOutput(`[CodeWatchService] Question: ${content}`);
     // In a real implementation, this would call an AI service to answer the question
   }
 
@@ -282,11 +270,10 @@ ${fileText}`.trim(),
    * @param lineNumber - Line number in the file
    */
   async noteAIComment(content: string, filePath: string, lineNumber: number): Promise<void> {
-    const chatService = this.registry.requireFirstServiceByType(ChatService);
-    chatService.infoLine(
+    this.agentTeam.serviceOutput(
       `[CodeWatchService][AI] AI comment noted from ${filePath}:${lineNumber}. This feature is not fully implemented yet.`,
     );
-    chatService.infoLine(`[CodeWatchService] Note: ${content}`);
+    this.agentTeam.serviceOutput(`[CodeWatchService] Note: ${content}`);
     // In a real implementation, this would store the comment for future use
   }
 }

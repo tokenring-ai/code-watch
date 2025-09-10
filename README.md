@@ -1,4 +1,4 @@
-# @token-ring/code-watch
+# @tokenring-ai/code-watch
 
 Code watcher service for Token Ring. This package provides a registry Service that monitors your workspace for file
 changes and reacts to special in-file AI instructions written as comments.
@@ -14,15 +14,15 @@ the handler.
 
 This package is part of the Token Ring monorepo and is referenced in a workspace as:
 
-- Name: `@token-ring/code-watch`
+- Name: `@tokenring-ai/code-watch`
 - Version: `0.1.0`
 
 It depends on the following peer packages being available/registered in your app:
 
-- `@token-ring/registry`
-- `@token-ring/filesystem`
-- `@token-ring/chat`
-- `@token-ring/ai-client`
+- `@tokenring-ai/registry`
+- `@tokenring-ai/filesystem`
+- `@tokenring-ai/chat`
+- `@tokenring-ai/ai-client`
 
 ## What it does
 
@@ -91,11 +91,11 @@ export default {
 ## Programmatic usage
 
 ```ts
-import {ServiceRegistry} from "@token-ring/registry";
-import {LocalFileSystemService} from "@token-ring/local-filesystem";
-import {ChatService} from "@token-ring/chat";
-import {ModelRegistry} from "@token-ring/ai-client";
-import {CodeWatchService} from "@token-ring/code-watch";
+import {ServiceRegistry} from "@tokenring-ai/registry";
+import {LocalFileSystemService} from "@tokenring-ai/local-filesystem";
+import {ChatService} from "@tokenring-ai/chat";
+import {ModelRegistry} from "@tokenring-ai/ai-client";
+import {CodeWatchService} from "@tokenring-ai/code-watch";
 
 const registry = new ServiceRegistry();
 await registry.start();
@@ -129,7 +129,7 @@ await registry.services.addServices(
 - The service relies on the registered `FileSystemService.watch` to emit events. Include/exclude behavior depends on the
   concrete file system service you register (e.g., LocalFileSystemService) and your app config. CodeWatchService itself
   calls `watch("./")`.
-- The LLM request uses `@token-ring/ai-client` and requires your ModelRegistry to be configured with a provider and
+- The LLM request uses `@tokenring-ai/ai-client` and requires your ModelRegistry to be configured with a provider and
   model that supports tool use. The selection string is `auto:intelligence>=3,tools>=2`.
 - File updates are expected to be performed by the model using the file tool within your application’s tool
   infrastructure; ensure tools are enabled in your registry.

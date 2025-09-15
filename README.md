@@ -1,141 +1,210 @@
-# @tokenring-ai/code-watch
+# Code Watch Package Documentation
 
-Code watcher service for Token Ring. This package provides a registry Service that monitors your workspace for file
-changes and reacts to special in-file AI instructions written as comments.
+## Overview
 
-When a changed file contains a comment tagged with AI!, the service sends the file and the instruction to your
-configured LLM and asks it to apply the requested changes, using the file tool, and to remove the AI! line from the
-file.
+The `@tokenring-ai/code-watch` package provides a service for monitoring file changes in a filesystem and detecting special AI-triggered comments within those files. It integrates with the TokenRing AI agent framework to automatically execute actions based on comments like `# AI!` or `// AI?` in code files. The primary purpose is to enable interactive code modification and querying through natural language instructions embedded as comments, allowing developers to collaborate with AI agents seamlessly during development.
 
-Current status: AI! is implemented. AI? (ask a question) and plain AI (note) are scaffolded but disabled by default in
-the handler.
+This package watches the root directory for file additions, changes, and deletions. When a file is modified, it scans for comment lines starting with `# AI`, `// AI`, or ending with `AI!`, `AI?`, or `AI`. Currently, it fully supports triggering code modifications via `AI!` comments by spawning an AI agent to process and update the file. Support for `AI?` (question answering) and plain `AI` (noting comments) is stubbed but not fully implemented.
 
-## Installation
+The service relies on the TokenRing agent ecosystem, using services like `FileSystemService` for watching and file operations, and `AgentTeam` for creating and managing AI agents.
 
-This package is part of the Token Ring monorepo and is referenced in a workspace as:
+## Installation/Setup
 
-- Name: `@tokenring-ai/code-watch`
-- Version: `0.1.0`
+This package is designed for integration within the TokenRing AI framework. To use it:
 
-It depends on the following peer packages being available/registered in your app:
+1. Ensure the TokenRing AI agent dependencies are installed in your project:
+   ```
+   npm install @tokenring-ai/agent @tokenring-ai/ai-client @tokenring-ai/filesystem
+   ```
 
-- `@tokenring-ai/registry`
-- `@tokenring-ai/filesystem`
-- `@tokenring-ai/chat`
-- `@tokenring-ai/ai-client`
+2. Install the code-watch package:
+   ```
+   npm install @tokenring-ai/code-watch
+   ```
 
-## What it does
+3. In your TokenRing application, register the `CodeWatchService` as a service within an `AgentTeam`. No additional build steps are required, as it's a TypeScript module.
 
-- Subscribes to the FileSystemService watcher (watch("./"))
-- Collects added/changed file paths
-- Reads file contents and scans for comment lines that include AI triggers
-- Triggers an action for AI! lines:
-- Builds a prompt with the entire file content and your AI! instruction
-- Selects a capable model via ModelRegistry
-- Requests the model to update the file using the file tool and to remove AI! comment lines
-- Streams a short summary to ChatService
+The package assumes a virtual filesystem provided by `FileSystemService` and an AI model registry for agent interactions.
 
-## Trigger syntax in code comments
+## Package Structure
 
-The service looks for comment lines using either shell/Python style or C/JS style:
+The package has a simple structure:
 
-- Lines that start with one of:
-- `# AI...`
-- `// AI...`
-- Or lines that end with one of:
-- `AI`
-- `AI!`
-- `AI?`
+- **index.ts**: Entry point that exports the `CodeWatchService` class and package metadata from `package.json`.
+- **CodeWatchService.ts**: Core implementation of the file watching and AI comment processing logic.
+- **package.json**: Defines dependencies, exports, and scripts (e.g., for testing with Vitest).
+- **README.md**: This documentation file.
+- **LICENSE**: MIT license file.
 
-Only AI! triggers an action at present. Example (JavaScript):
+No subdirectories; all source code is in the root of `pkg/code-watch`.
 
-```js
-> // AI! Refactor this function to use async/await and add proper error handling
-function fetchData(cb) {
- doWork(function (err, res) {
-  if (err) return cb(err);
-  cb(null, res);
- });
+## Core Components
+
+### CodeWatchService
+
+The main class implementing the `TokenRingService` interface. It manages file watching, processes changes, and triggers AI agents.
+
+#### Description
+- Initializes with options specifying agent types (e.g., for code modification).
+- Starts a file watcher on the root directory using polling (interval: 1000ms, stability threshold: 2000ms).
+- On file add/change, queues the file for processing.
+- Scans files for AI comments in Python (#) or C-style (//) syntax.
+- For `AI!` comments, spawns a code modification agent to interpret and execute the instruction, then updates the file and removes the trigger comment.
+- Handles errors via the agent team's error reporting.
+- Ensures only one file processing cycle runs at a time to avoid overload.
+
+#### Key Methods
+
+- **constructor(config: CodeWatchServiceOptions)**
+  - Parameters: `config` with `agentTypes` (e.g., `{ codeModification: 'some-agent-type' }`).
+  - Initializes agent types for later use.
+
+- **async start(agentTeam: AgentTeam): Promise<void>**
+  - Starts the service by acquiring `FileSystemService` and initiating the file watcher.
+  - Sets up event listeners for 'add', 'change', 'unlink', and 'error'.
+
+- **async stop(agentTeam: AgentTeam): Promise<void>**
+  - Stops the watcher and cleans up resources.
+
+- **async startWatching(): Promise<void>**
+  - Creates or recreates the file watcher on './' (root).
+  - Attaches event handlers to `onFileChanged`.
+
+- **async stopWatching(): Promise<void>**
+  - Closes the watcher if active.
+
+- **onFileChanged(eventType: string, filePath: string): void**
+  - For 'add' or 'change', adds file to `modifiedFiles` set and triggers `processNextFile`.
+
+- **async processNextFile(): Promise<void>**
+  - Processes queued files sequentially if not already processing.
+  - Calls `processFileForAIComments` for each, handles errors, and recurses if more files.
+
+- **async processFileForAIComments(filePath: string): Promise<void>**
+  - Reads file content, splits into lines.
+  - For each line starting with '#' or '//', checks for AI triggers via `checkAndTriggerAIAction`.
+
+- **async checkAndTriggerAIAction(line: string, filePath: string, lineNumber: number): Promise<void>**
+  - Detects AI prefixes/suffixes and calls `handleAIComment` if matched.
+
+- **async handleAIComment(commentLine: string, filePath: string, lineNumber: number): Promise<void>**
+  - Extracts comment content (strips # or //).
+  - Routes to `triggerCodeModification` for `AI!`, or stubs for `AI?`/`AI`.
+
+- **async triggerCodeModification(content: string, filePath: string, lineNumber: number): Promise<void>**
+  - Creates a code modification agent.
+  - Builds a chat prompt with file context and instructions to execute the comment and remove `AI!` lines.
+  - Uses an AI client (criteria: intelligence >=3, tools >=2) to generate output.
+  - Logs the agent's actions and summary.
+
+- **async triggerQuestionAnswer(content: string, filePath: string, lineNumber: number): Promise<void>**
+  - Currently a stub: Logs the question; full implementation would query an AI service.
+
+- **async noteAIComment(content: string, filePath: string, lineNumber: number): Promise<void>**
+  - Currently a stub: Logs the note; full implementation would store for later use.
+
+#### Interactions
+The service interacts with:
+- `FileSystemService`: For watching and reading files.
+- `AgentTeam`: For creating agents, logging outputs/errors.
+- `ModelRegistry`: To select AI models for chat.
+- AI Agents: Spawned for specific tasks like code modification.
+
+Error handling uses try-catch with agent team reporting. Processing is asynchronous and queued to handle bursts of changes.
+
+## Usage Examples
+
+### 1. Basic Integration in TokenRing AgentTeam
+```typescript
+import { AgentTeam } from '@tokenring-ai/agent';
+import { CodeWatchService, CodeWatchServiceOptions } from '@tokenring-ai/code-watch';
+
+const options: CodeWatchServiceOptions = {
+  agentTypes: {
+    codeModification: 'code-modifier-agent' // Replace with actual agent type
+  }
+};
+
+const codeWatch = new CodeWatchService(options);
+const agentTeam = new AgentTeam(/* ... config ... */);
+
+// Start the service
+await codeWatch.start(agentTeam);
+
+// In your app loop or main:
+// ... run agent team ...
+
+// Stop when done
+await codeWatch.stop(agentTeam);
+```
+
+### 2. Triggering Code Modification
+Add a comment to a file like `src/example.ts`:
+```typescript
+// AI! Add a function to calculate factorial
+function factorial(n: number): number {
+  // Implementation will be added by AI
 }
 ```
+- Save the file: The watcher detects the change.
+- The service processes it, spawns an agent, and the AI updates the file (e.g., adds the function and removes the `AI!` line).
 
-Python/bash style also works:
-
-```py
-> # AI! Improve the algorithm below for O(n log n) sorting
+### 3. Handling Questions (Stubbed)
+Add to a file:
+```python
+# AI? What is the best way to optimize this loop?
+for i in range(1000000):
+    # code
 ```
+- On save, logs the question; extend `triggerQuestionAnswer` for full AI response.
 
-Important: The LLM is instructed to remove any AI! lines when it writes the updated file.
+## Configuration Options
 
-## Using with tr-coder (recommended)
+- **CodeWatchServiceOptions**:
+  - `agentTypes.codeModification`: String identifier for the agent type to use for code changes (required).
 
-The tr-coder CLI will automatically add CodeWatchService when you declare `watchedFiles` in your
-`.tokenring/coder-config.js`.
+Watcher config (internal, hardcoded):
+- `pollInterval: 1000` ms.
+- `stabilityThreshold: 2000` ms.
 
-Minimal example config:
+Environment variables: None explicitly; relies on TokenRing config for AI models and filesystem.
 
-```js
-export default {
-  defaults: { model: "kimi-k2-instruct", persona: "code" },
-  models: { /* your model providers here */ },
-  watchedFiles: [
-    { path: "./", include: /\.(js|jsx|ts|tsx|md|sql|txt)$/ },
-  ],
-};
-```
+## API Reference
 
-- Starting tr-coder with this config registers ChatService, ModelRegistry, LocalFileSystemService, and CodeWatchService.
-- CodeWatchService internally calls `fileSystem.watch("./")` and will receive change events based on your
-  FileSystemService implementation and its configuration (e.g., include/exclude patterns from your app).
+- **Class: CodeWatchService**
+  - `constructor(config: CodeWatchServiceOptions)`
+  - `async start(agentTeam: AgentTeam): Promise<void>`
+  - `async stop(agentTeam: AgentTeam): Promise<void>`
 
-## Programmatic usage
+- **Type: CodeWatchServiceOptions**
+  - `{ agentTypes: { codeModification: string } }`
 
-```ts
-import {ServiceRegistry} from "@tokenring-ai/registry";
-import {LocalFileSystemService} from "@tokenring-ai/local-filesystem";
-import {ChatService} from "@tokenring-ai/chat";
-import {ModelRegistry} from "@tokenring-ai/ai-client";
-import {CodeWatchService} from "@tokenring-ai/code-watch";
+Public properties:
+- `name: string = "CodeWatchService"`
+- `description: string` (fixed)
 
-const registry = new ServiceRegistry();
-await registry.start();
+All other methods are private/internal.
 
-await registry.services.addServices(
-  new ChatService({personas: {/*...*/}, persona: "code"}),
-  new ModelRegistry(),
-  new LocalFileSystemService({rootDirectory: process.cwd()}),
-  new CodeWatchService(),
-);
+## Dependencies
 
-// Now, editing files under rootDirectory and saving lines with AI! will trigger model-driven updates
-```
+- `@tokenring-ai/ai-client@0.1.0`: For AI chat requests and model registry.
+- `@tokenring-ai/agent@0.1.0`: For agent teams and service integration.
+- `@tokenring-ai/filesystem@0.1.0`: For file watching and operations.
+- `ignore@^7.0.5`: Likely for ignoring files in watching (not directly used in code).
 
-## API summary
+Peer dependencies: Assumes TokenRing framework is available.
 
-- Class: `CodeWatchService extends Service`
-- start(registry: Registry): Initializes and begins watching via FileSystemService.watch("./").
-- stop(): Stops the watcher.
-- startWatching()/stopWatching(): Manage underlying watcher.
-- onFileChanged(eventType, filePath): Queues modified files.
-- processNextFile(): Processes queued files serially.
-- processFileForAIComments(filePath): Scans file content for AI triggers.
-- handleAIComment(commentLine, filePath, lineNumber): Dispatches to action (currently only AI!).
-- triggerCodeModification(content, filePath, lineNumber): Orchestrates model call and logs results to ChatService.
-- triggerQuestionAnswer(...) and noteAIComment(...): Present but not wired in by default.
+## Contributing/Notes
 
-## Notes and limitations
+- **Testing**: Run `npm test` using Vitest.
+- **Building**: TypeScript; compiles to JS modules (ESM).
+- **Limitations**: 
+  - Only supports # and // comments; extend for other languages.
+  - `AI?` and `AI` features are stubs—implement as needed.
+  - Polling-based watching may not be real-time; suitable for virtual FS.
+  - Assumes UTF-8 text files; binaries ignored.
+  - No support for deletions in processing (only add/change trigger scans).
+- **License**: MIT.
+- Contributions: Fork, add features (e.g., more comment types, regex triggers), and submit PRs.
 
-- Only AI! is active. AI? and AI are present as stubs and currently not executed.
-- The service relies on the registered `FileSystemService.watch` to emit events. Include/exclude behavior depends on the
-  concrete file system service you register (e.g., LocalFileSystemService) and your app config. CodeWatchService itself
-  calls `watch("./")`.
-- The LLM request uses `@tokenring-ai/ai-client` and requires your ModelRegistry to be configured with a provider and
-  model that supports tool use. The selection string is `auto:intelligence>=3,tools>=2`.
-- File updates are expected to be performed by the model using the file tool within your application’s tool
-  infrastructure; ensure tools are enabled in your registry.
-- Security: Review AI! instructions before committing changes; they will be sent with the entire file content to your
-  model provider.
-
-## License
-
-MIT
+For issues or extensions, refer to the TokenRing AI repository.

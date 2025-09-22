@@ -37,7 +37,7 @@ export default class CodeWatchService implements TokenRingService {
    * Start the CodeWatchService
    */
   async start(agentTeam: AgentTeam): Promise<void> {
-    this.fileSystem = agentTeam.services.requireFirstItemByType(FileSystemService);
+    this.fileSystem = agentTeam.services.requireItemByType(FileSystemService);
 
     // Start watching the root directory for changes
     await this.startWatching();
@@ -199,7 +199,7 @@ export default class CodeWatchService implements TokenRingService {
     if (!fileText) return;
     const agent = await this.agentTeam.createAgent(this.agentTypes.codeModification);
 
-    const modelRegistry = agent.requireFirstServiceByType(ModelRegistry);
+    const modelRegistry = agent.requireServiceByType(ModelRegistry);
 
     this.agentTeam.serviceOutput(
       `[CodeWatchService] Code modification triggered from ${filePath}:${lineNumber}, running a ${this.agentTypes.codeModification} agent`,

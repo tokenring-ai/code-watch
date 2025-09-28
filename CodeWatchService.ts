@@ -206,11 +206,7 @@ export default class CodeWatchService implements TokenRingService {
     );
     agent.infoLine(`[CodeWatchService] Instruction: ${content}`);
 
-    const systemPrompt: ChatInputMessage = {
-      role: "system",
-      content:
-        "When you output a file with file tool, you MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.",
-    };
+    const systemPrompt = "When you output a file with file tool, you MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.";
 
     const input: ChatInputMessage[] = [
       {

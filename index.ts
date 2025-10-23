@@ -5,7 +5,7 @@ import packageJSON from './package.json' with {type: 'json'};
 
 export const CodeWatchConfigSchema = z.any().optional();
 
-export const packageInfo: TokenRingPackage = {
+export default {
   name: packageJSON.name,
   version: packageJSON.version,
   description: packageJSON.description,
@@ -15,6 +15,6 @@ export const packageInfo: TokenRingPackage = {
       agentTeam.addServices(new CodeWatchService(config));
     }
   }
-};
+} as TokenRingPackage;
 
 export {default as CodeWatchService} from "./CodeWatchService.ts";

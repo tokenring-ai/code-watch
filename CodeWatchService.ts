@@ -1,8 +1,7 @@
 import {AgentTeam} from "@tokenring-ai/agent";
 import {TokenRingService} from "@tokenring-ai/agent/types";
-import {createChatRequest, ModelRegistry} from "@tokenring-ai/ai-client";
-import {ChatInputMessage} from "@tokenring-ai/ai-client/client/AIChatClient";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
+import codeModificationAgent from './agents/codeModificationAgent.js'
 
 const pkgName = "CodeWatchService";
 
@@ -37,7 +36,7 @@ export default class CodeWatchService implements TokenRingService {
    * Start the CodeWatchService
    */
   async start(agentTeam: AgentTeam): Promise<void> {
-    this.fileSystem = agentTeam.services.requireItemByType(FileSystemService);
+    this.fileSystem = agentTeam.requireService(FileSystemService);
 
     // Start watching the root directory for changes
     await this.startWatching();
@@ -197,22 +196,17 @@ export default class CodeWatchService implements TokenRingService {
   async triggerCodeModification(content: string, filePath: string, lineNumber: number): Promise<void> {
     const fileText = await this.fileSystem.getFile(filePath);
     if (!fileText) return;
-    const agent = await this.agentTeam.createAgent(this.agentTypes.codeModification);
-
-    const modelRegistry = agent.requireServiceByType(ModelRegistry);
+    const agent = await this.agentTeam.createAgent(codeModificationAgent);
 
     this.agentTeam.serviceOutput(
       `[CodeWatchService] Code modification triggered from ${filePath}:${lineNumber}, running a ${this.agentTypes.codeModification} agent`,
     );
     agent.infoLine(`[CodeWatchService] Instruction: ${content}`);
 
-    const systemPrompt = "When you output a file with file tool, you MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.";
-
-    const input: ChatInputMessage[] = [
-      {
-        role: "user",
-        content: `
-:The user has edited the file ${filePath}, adding instructions to the file, which they expect AI to execute.
+    try {
+      let inputSent = false;
+      const message = `
+/chat The user has edited the file ${filePath}, adding instructions to the file, which they expect AI to execute.
 Look for any lines in the file marked with the tag AI!, which contain the users instructions.
 Complete the instructions in that line or in any nearby comments, using any tools available to you to complete the task.
 Once complete, update the file using the file command. You MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.
@@ -220,28 +214,35 @@ Afterwards, print a one sentence summary of the changes made to the file.
 
 Here is the current, up to date version of the file ${filePath}:
 
-${fileText}`.trim(),
-      },
-    ];
+${fileText}`.trim();
 
-    const client = await modelRegistry.chat.getFirstOnlineClient(
-      "auto:intelligence>=3,tools>=2",
-    );
+      const abortController = new AbortController();
 
-    agent.infoLine(
-      `[CodeWatchService] Using model ${client.getModelId()}`,
-    );
-
-    const request = await createChatRequest(
-      {input, systemPrompt},
-      agent,
-    );
-
-    const [output] = await client.textChat(request, agent);
-
-    agent.infoLine(`[CodeWatchService] Code modification complete:`);
-    for (const line of String(output).split("\n")) {
-      agent.infoLine(`[CodeWatchService] ${line}`);
+      for await (const event of agent.events(abortController.signal)) {
+        switch (event.type) {
+          case "output.system":
+            if (event.data.level === "error") {
+              this.agentTeam.serviceError(`[CodeWatchService] ${event.data.message}`);
+            } else {
+              this.agentTeam.serviceOutput(`[CodeWatchService] ${event.data.message}`);
+            }
+            break;
+          case "state.idle":
+            if (!inputSent) {
+              inputSent = true;
+              agent.handleInput({message});
+            } else {
+              agent.infoLine(`[CodeWatchService] Code modification complete`);
+              return;
+            }
+            break;
+          case "state.aborted":
+            agent.infoLine(`[CodeWatchService] Agent was terminated`);
+            return;
+        }
+      }
+    } finally {
+      await this.agentTeam.deleteAgent(agent);
     }
   }
 

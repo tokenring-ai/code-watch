@@ -3,7 +3,7 @@
  "description": "Service for watching code changes and triggering actions",
  "version": "0.1.0",
  "dependencies": {
-  "@tokenring-ai/ai-client": "0.1.0",
+  "@tokenring-ai/chat": "0.1.0",
   "@tokenring-ai/agent": "0.1.0",
   "@tokenring-ai/filesystem": "0.1.0",
   "ignore": "^7.0.5"

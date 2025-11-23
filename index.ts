@@ -1,4 +1,5 @@
-import {AgentTeam, TokenRingPackage} from "@tokenring-ai/agent";
+import TokenRingApp from "@tokenring-ai/app";
+import {TokenRingPlugin} from "@tokenring-ai/app";
 import {z} from "zod";
 import CodeWatchService from "./CodeWatchService.ts";
 import packageJSON from './package.json' with {type: 'json'};
@@ -9,12 +10,12 @@ export default {
   name: packageJSON.name,
   version: packageJSON.version,
   description: packageJSON.description,
-  install(agentTeam: AgentTeam) {
-    const config = agentTeam.getConfigSlice('codewatch', CodeWatchConfigSchema);
+  install(app: TokenRingApp) {
+    const config = app.getConfigSlice('codewatch', CodeWatchConfigSchema);
     if (config) {
-      agentTeam.addServices(new CodeWatchService(config));
+      app.addServices(new CodeWatchService(app, config));
     }
   }
-} as TokenRingPackage;
+} as TokenRingPlugin;
 
 export {default as CodeWatchService} from "./CodeWatchService.ts";

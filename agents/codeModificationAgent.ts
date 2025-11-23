@@ -7,7 +7,7 @@ export default {
   visual: {
     color: "blue",
   },
-  ai: {
+  chat: {
     systemPrompt: `When you output a file with file tool, you MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.`,
     maxSteps: 100,
   },

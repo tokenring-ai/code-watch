@@ -1,6 +1,7 @@
-import {AgentTeam} from "@tokenring-ai/agent";
-import {TokenRingService} from "@tokenring-ai/agent/types";
+import {AgentManager} from "@tokenring-ai/agent";
+import TokenRingApp from "@tokenring-ai/app";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
+import {TokenRingService} from "@tokenring-ai/app/types";
 import codeModificationAgent from './agents/codeModificationAgent.js'
 
 const pkgName = "CodeWatchService";
@@ -25,18 +26,19 @@ export default class CodeWatchService implements TokenRingService {
   modifiedFiles: Set<string> = new Set();
   private watcher!: Watcher;
   private fileSystem!: FileSystemService;
-  private agentTeam!: AgentTeam;
+  private app: TokenRingApp;
   private agentTypes: CodeWatchServiceOptions["agentTypes"];
 
-  constructor(config: CodeWatchServiceOptions) {
+  constructor(app: TokenRingApp, config: CodeWatchServiceOptions) {
+    this.app = app;
     this.agentTypes = config.agentTypes
   }
 
   /**
    * Start the CodeWatchService
    */
-  async start(agentTeam: AgentTeam): Promise<void> {
-    this.fileSystem = agentTeam.requireService(FileSystemService);
+  async start(): Promise<void> {
+    this.fileSystem = this.app.requireService(FileSystemService);
 
     // Start watching the root directory for changes
     await this.startWatching();
@@ -45,7 +47,7 @@ export default class CodeWatchService implements TokenRingService {
   /**
    * Stop the service and clean up resources
    */
-  async stop(_agentTeam: AgentTeam): Promise<void> {
+  async stop(): Promise<void> {
     await this.stopWatching();
   }
 
@@ -111,7 +113,7 @@ export default class CodeWatchService implements TokenRingService {
       try {
         await this.processFileForAIComments(filePath);
       } catch (error) {
-        this.agentTeam.serviceError(`[${pkgName}] Error processing file ${filePath}: ${error}`);
+        this.app.serviceError(`[${pkgName}] Error processing file ${filePath}: ${error}`);
       }
     }
     this.isProcessing = false;
@@ -194,11 +196,12 @@ export default class CodeWatchService implements TokenRingService {
    * @param lineNumber - Line number in the file
    */
   async triggerCodeModification(content: string, filePath: string, lineNumber: number): Promise<void> {
+    const agentManager = this.app.requireService(AgentManager)
     const fileText = await this.fileSystem.getFile(filePath);
     if (!fileText) return;
-    const agent = await this.agentTeam.createAgent(codeModificationAgent);
+    const agent = await agentManager.createAgent(codeModificationAgent);
 
-    this.agentTeam.serviceOutput(
+    this.app.serviceOutput(
       `[CodeWatchService] Code modification triggered from ${filePath}:${lineNumber}, running a ${this.agentTypes.codeModification} agent`,
     );
     agent.infoLine(`[CodeWatchService] Instruction: ${content}`);
@@ -222,9 +225,9 @@ ${fileText}`.trim();
         switch (event.type) {
           case "output.system":
             if (event.data.level === "error") {
-              this.agentTeam.serviceError(`[CodeWatchService] ${event.data.message}`);
+              this.app.serviceError(`[CodeWatchService] ${event.data.message}`);
             } else {
-              this.agentTeam.serviceOutput(`[CodeWatchService] ${event.data.message}`);
+              this.app.serviceOutput(`[CodeWatchService] ${event.data.message}`);
             }
             break;
           case "state.idle":
@@ -242,7 +245,7 @@ ${fileText}`.trim();
         }
       }
     } finally {
-      await this.agentTeam.deleteAgent(agent);
+      await agentManager.deleteAgent(agent);
     }
   }
 
@@ -253,10 +256,10 @@ ${fileText}`.trim();
    * @param lineNumber - Line number in the file
    */
   async triggerQuestionAnswer(content: string, filePath: string, lineNumber: number): Promise<void> {
-    this.agentTeam.serviceOutput(
+    this.app.serviceOutput(
       `[CodeWatchService][AI?] Question answering noted from ${filePath}:${lineNumber}. This feature is not fully implemented yet.`,
     );
-    this.agentTeam.serviceOutput(`[CodeWatchService] Question: ${content}`);
+    this.app.serviceOutput(`[CodeWatchService] Question: ${content}`);
     // In a real implementation, this would call an AI service to answer the question
   }
 
@@ -267,10 +270,10 @@ ${fileText}`.trim();
    * @param lineNumber - Line number in the file
    */
   async noteAIComment(content: string, filePath: string, lineNumber: number): Promise<void> {
-    this.agentTeam.serviceOutput(
+    this.app.serviceOutput(
       `[CodeWatchService][AI] AI comment noted from ${filePath}:${lineNumber}. This feature is not fully implemented yet.`,
     );
-    this.agentTeam.serviceOutput(`[CodeWatchService] Note: ${content}`);
+    this.app.serviceOutput(`[CodeWatchService] Note: ${content}`);
     // In a real implementation, this would store the comment for future use
   }
 }

@@ -3,6 +3,7 @@ import {AgentConfig} from "@tokenring-ai/agent/types";
 export default {
   name: "Code Modification Agent",
   description: "A code modification agent, to use to work on files",
+  category: "Development",
   type: "background",
   visual: {
     color: "blue",

@@ -117,8 +117,8 @@ export default class CodeWatchService implements TokenRingService {
       }
     }
     this.isProcessing = false;
-    // noinspection ES6MissingAwait
-    void this.processNextFile();
+
+    this.app.trackPromise(this.processNextFile());
   }
 
   /**

@@ -1,4 +1,5 @@
 import {AgentManager} from "@tokenring-ai/agent";
+import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import TokenRingApp from "@tokenring-ai/app";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 import {TokenRingService} from "@tokenring-ai/app/types";
@@ -207,42 +208,54 @@ export default class CodeWatchService implements TokenRingService {
     agent.infoLine(`[CodeWatchService] Instruction: ${content}`);
 
     try {
-      let inputSent = false;
       const message = `
-/chat The user has edited the file ${filePath}, adding instructions to the file, which they expect AI to execute.
-Look for any lines in the file marked with the tag AI!, which contain the users instructions.
-Complete the instructions in that line or in any nearby comments, using any tools available to you to complete the task.
-Once complete, update the file using the file command. You MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.
-Afterwards, print a one sentence summary of the changes made to the file.
+    /chat The user has edited the file ${filePath}, adding instructions to the file, which they expect AI to execute.
+    Look for any lines in the file marked with the tag AI!, which contain the users instructions.
+    Complete the instructions in that line or in any nearby comments, using any tools available to you to complete the task.
+    Once complete, update the file using the file command. You MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.
+    Afterwards, print a one sentence summary of the changes made to the file.
 
-Here is the current, up to date version of the file ${filePath}:
+    Here is the current, up to date version of the file ${filePath}:
 
-${fileText}`.trim();
+    ${fileText}`.trim();
 
       const abortController = new AbortController();
 
-      for await (const event of agent.events(abortController.signal)) {
-        switch (event.type) {
-          case "output.system":
-            if (event.data.level === "error") {
-              this.app.serviceError(`[CodeWatchService] ${event.data.message}`);
-            } else {
-              this.app.serviceOutput(`[CodeWatchService] ${event.data.message}`);
-            }
-            break;
-          case "state.idle":
-            if (!inputSent) {
-              inputSent = true;
-              agent.handleInput({message});
-            } else {
-              agent.infoLine(`[CodeWatchService] Code modification complete`);
-              return;
-            }
-            break;
-          case "state.aborted":
-            agent.infoLine(`[CodeWatchService] Agent was terminated`);
-            return;
+      // Wait for agent to be idle before sending new message
+      const initialState = await agent.waitForState(AgentEventState, (state) => state.idle);
+      const eventCursor = initialState.getEventCursorFromCurrentPosition();
+
+      // Send the message to the agent
+      const requestId = agent.handleInput({message});
+
+      // Subscribe to agent events to process the response
+      const unsubscribe = agent.subscribeState(AgentEventState, (state) => {
+        for (const event of state.yieldEventsByCursor(eventCursor)) {
+          switch (event.type) {
+            case "output.system":
+              if (event.data.level === "error") {
+                this.app.serviceError(`[CodeWatchService] ${event.data.message}`);
+              } else {
+                this.app.serviceOutput(`[CodeWatchService] ${event.data.message}`);
+              }
+              break;
+            case "input.handled":
+              if (event.data.requestId === requestId) {
+                unsubscribe();
+                agent.infoLine(`[CodeWatchService] Code modification complete`);
+                return;
+              }
+              break;
+          }
         }
+      });
+
+      // Set timeout for the response
+      if (agent.config.maxRunTime > 0) {
+        setTimeout(() => {
+          unsubscribe();
+          this.app.serviceOutput(`[CodeWatchService] Code modification timed out after ${agent.config.maxRunTime} seconds.`);
+        }, agent.config.maxRunTime * 1000);
       }
     } finally {
       await agentManager.deleteAgent(agent);

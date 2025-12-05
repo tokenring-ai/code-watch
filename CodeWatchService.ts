@@ -233,14 +233,14 @@ export default class CodeWatchService implements TokenRingService {
         for (const event of state.yieldEventsByCursor(eventCursor)) {
           switch (event.type) {
             case "output.system":
-              if (event.data.level === "error") {
-                this.app.serviceError(`[CodeWatchService] ${event.data.message}`);
+              if (event.level === "error") {
+                this.app.serviceError(`[CodeWatchService] ${event.message}`);
               } else {
-                this.app.serviceOutput(`[CodeWatchService] ${event.data.message}`);
+                this.app.serviceOutput(`[CodeWatchService] ${event.message}`);
               }
               break;
             case "input.handled":
-              if (event.data.requestId === requestId) {
+              if (event.requestId === requestId) {
                 unsubscribe();
                 agent.infoLine(`[CodeWatchService] Code modification complete`);
                 return;

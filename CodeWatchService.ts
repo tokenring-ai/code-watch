@@ -200,7 +200,8 @@ export default class CodeWatchService implements TokenRingService {
     const agentManager = this.app.requireService(AgentManager)
     const fileText = await this.fileSystem.getFile(filePath);
     if (!fileText) return;
-    const agent = await agentManager.createAgent({ config: codeModificationAgent, headless: true });
+
+    const agent = await agentManager.spawnAgentFromConfig(codeModificationAgent, { headless: true });
 
     this.app.serviceOutput(
       `[CodeWatchService] Code modification triggered from ${filePath}:${lineNumber}, running a ${this.agentTypes.codeModification} agent`,

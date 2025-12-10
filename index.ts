@@ -16,6 +16,6 @@ export default {
       app.addServices(new CodeWatchService(app, config));
     }
   }
-} as TokenRingPlugin;
+} satisfies TokenRingPlugin;
 
 export {default as CodeWatchService} from "./CodeWatchService.ts";

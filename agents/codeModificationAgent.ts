@@ -16,4 +16,4 @@ export default {
   initialCommands: [
     "/tools enable @tokenring-ai/filesystem/*",
   ]
-} as AgentConfig;
+} satisfies AgentConfig;

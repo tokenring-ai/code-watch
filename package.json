@@ -1,22 +1,22 @@
 {
- "name": "@tokenring-ai/code-watch",
- "description": "Service for watching code changes and triggering actions",
- "version": "0.2.0",
- "dependencies": {
-  "@tokenring-ai/app": "0.2.0",
-  "@tokenring-ai/chat": "0.2.0",
-  "zod": "^4.1.13",
-  "@tokenring-ai/agent": "0.2.0",
-  "@tokenring-ai/filesystem": "0.2.0",
-  "ignore": "^7.0.5"
- },
- "exports": {
-  ".": "./index.ts",
-  "./*": "./*.ts"
- },
- "license": "MIT",
- "scripts": {
-  "test": "node_modules/.bin/vitest run"
- },
- "type": "module"
+  "name": "@tokenring-ai/code-watch",
+  "description": "Service for watching code changes and triggering actions",
+  "version": "0.2.0",
+  "dependencies": {
+    "@tokenring-ai/app": "0.2.0",
+    "@tokenring-ai/chat": "0.2.0",
+    "zod": "^4.1.13",
+    "@tokenring-ai/agent": "0.2.0",
+    "@tokenring-ai/filesystem": "0.2.0",
+    "ignore": "^7.0.5"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./*": "./*.ts"
+  },
+  "license": "MIT",
+  "scripts": {
+    "test": "node_modules/.bin/vitest run"
+  },
+  "type": "module"
 }

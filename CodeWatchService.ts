@@ -3,6 +3,7 @@ import {AgentEventState} from "@tokenring-ai/agent/state/agentEventState";
 import TokenRingApp from "@tokenring-ai/app";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 import {TokenRingService} from "@tokenring-ai/app/types";
+import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
 import codeModificationAgent from './agents/codeModificationAgent.js'
 
 const pkgName = "CodeWatchService";
@@ -38,18 +39,15 @@ export default class CodeWatchService implements TokenRingService {
   /**
    * Start the CodeWatchService
    */
-  async start(): Promise<void> {
+  async run(signal: AbortSignal): Promise<void> {
     this.fileSystem = this.app.requireService(FileSystemService);
 
     // Start watching the root directory for changes
     await this.startWatching();
-  }
 
-  /**
-   * Stop the service and clean up resources
-   */
-  async stop(): Promise<void> {
-    await this.stopWatching();
+    return waitForAbort(signal, async (ev) => {
+      await this.stopWatching();
+    });
   }
 
   /**

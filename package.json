@@ -16,7 +16,14 @@
   },
   "license": "MIT",
   "scripts": {
-    "test": "node_modules/.bin/vitest run"
+    "test": "vitest run",
+    "build": "tsc --noEmit",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "vitest": "catalog:",
+    "typescript": "catalog:"
+  }
 }

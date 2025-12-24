@@ -2,22 +2,32 @@
 
 ## Overview
 
-The `@tokenring-ai/code-watch` package provides a service for monitoring file changes and detecting AI-triggered comments within those files. It integrates with the TokenRing AI framework to automatically execute actions based on special comments like `# AI!` or `// AI?` in code files.
+The `@tokenring-ai/code-watch` package provides a service for monitoring file changes and detecting AI-triggered comments within code files. It integrates with the TokenRing AI framework to automatically execute actions based on special comments like `# AI!`, `# AI?`, or `# AI` in code files.
 
-This package watches the root directory for file additions and changes. When a file is modified, it scans for comment lines that contain AI triggers and spawns AI agents to process them. Currently, it fully supports triggering code modifications via `AI!` comments, while support for `AI?` (question answering) and plain `AI` comments is implemented as stubs.
+This package watches the root directory for file additions and changes. When a file is modified, it scans for comment lines that contain AI triggers and spawns AI agents to process them. The package currently supports triggering code modifications via `AI!` comments, while support for `AI?` (question answering) and plain `AI` comments is implemented as stubs.
+
+## Features
+
+- **File Watching**: Monitors the root directory for file additions, changes, and deletions
+- **AI Comment Detection**: Scans files for special AI comments (`# AI!`, `# AI?`, `# AI`)
+- **Agent Integration**: Spawns code modification agents to process `AI!` comments
+- **TokenRing Plugin**: Designed to work seamlessly with the TokenRing application framework
+- **Configurable**: Customizable agent types and watcher settings
+- **Error Handling**: Comprehensive error handling and service output logging
 
 ## Installation
 
 ```bash
-npm install @tokenring-ai/code-watch
+bun install @tokenring-ai/code-watch
 ```
 
 ## Prerequisites
 
 This package requires the following TokenRing AI dependencies:
-- `@tokenring-ai/chat`
-- `@tokenring-ai/agent`
-- `@tokenring-ai/filesystem`
+- `@tokenring-ai/app@0.2.0`
+- `@tokenring-ai/agent@0.2.0`
+- `@tokenring-ai/chat@0.2.0`
+- `@tokenring-ai/filesystem@0.2.0`
 
 ## Usage
 
@@ -45,7 +55,7 @@ You can also configure the service manually:
 
 ```typescript
 import TokenRingApp from "@tokenring-ai/app";
-import CodeWatchService from "@tokenring-ai/code-watch";
+import {CodeWatchService} from "@tokenring-ai/code-watch";
 
 const app = new TokenRingApp({
   // Your app configuration
@@ -54,7 +64,7 @@ const app = new TokenRingApp({
 // Configure the service
 const config = {
   agentTypes: {
-    codeModification: "code-modifier-agent" // Your agent type for code modifications
+    codeModification: "code-modification-agent" // Agent type for code modifications
   }
 };
 
@@ -110,15 +120,17 @@ Currently logs the comment for future implementation.
 
 ## Package Structure
 
-```
+```bash
 pkg/code-watch/
-├── index.ts                 # Entry point and plugin definition
+├── index.ts                 # Entry point and schema definition
 ├── CodeWatchService.ts      # Main service implementation
+├── plugin.ts               # TokenRing plugin interface
 ├── agents/
 │   └── codeModificationAgent.ts  # Agent configuration for code modifications
 ├── package.json            # Package configuration and dependencies
 ├── README.md               # This documentation
-└── LICENSE                 # MIT license
+├── LICENSE                 # MIT license
+└── vitest.config.ts        # Test configuration
 ```
 
 ## API Reference
@@ -149,11 +161,17 @@ interface CodeWatchServiceOptions {
 
 #### Methods
 
-- `async start()`: Start the service and begin watching files
-- `async stop()`: Stop the service and clean up resources
+- `async run(signal: AbortSignal)`: Start the service and begin watching files
+- `async startWatching()`: Start watching the directory for file changes
+- `async stopWatching()`: Stop watching for file changes
 - `onFileChanged(eventType: string, filePath: string)`: Handle file change events
+- `async processNextFile()`: Process the next file in the queue
 - `async processFileForAIComments(filePath: string)`: Process a file for AI comments
+- `async checkAndTriggerAIAction(line: string, filePath: string, lineNumber: number)`: Check for AI triggers
 - `async handleAIComment(commentLine: string, filePath: string, lineNumber: number)`: Handle AI comments
+- `async triggerCodeModification(content: string, filePath: string, lineNumber: number)`: Trigger code modification
+- `async triggerQuestionAnswer(content: string, filePath: string, lineNumber: number)`: Mock function for question answering
+- `async noteAIComment(content: string, filePath: string, lineNumber: number)`: Mock function to note AI comments
 
 ### Plugin Interface
 
@@ -162,15 +180,26 @@ The package exports a TokenRing plugin with the following structure:
 ```typescript
 export default {
   name: "@tokenring-ai/code-watch",
-  version: "0.1.0",
+  version: "0.2.0",
   description: "Service for watching code changes and triggering actions",
   install(app: TokenRingApp) {
-    // Automatic installation logic
+    const config = app.getConfigSlice('codewatch', CodeWatchConfigSchema);
+    if (config) {
+      app.addServices(new CodeWatchService(app, config));
+    }
   }
 }
 ```
 
 ## Configuration
+
+### Configuration Schema
+
+```typescript
+import {z} from "zod";
+
+export const CodeWatchConfigSchema = z.any().optional();
+```
 
 ### Environment Variables
 
@@ -189,17 +218,24 @@ The file watcher uses the following settings (hardcoded):
 
 ## Dependencies
 
-- `@tokenring-ai/chat@0.1.0`: For AI chat functionality
-- `@tokenring-ai/agent@0.1.0`: For agent management
-- `@tokenring-ai/filesystem@0.1.0`: For file watching and operations
-- `ignore@^7.0.5`: For file ignoring patterns
+- `@tokenring-ai/app@0.2.0`: Base application framework
+- `@tokenring-ai/agent@0.2.0`: Agent management system
+- `@tokenring-ai/chat@0.2.0`: AI chat functionality
+- `@tokenring-ai/filesystem@0.2.0`: Filesystem operations
+- `ignore@^7.0.5`: File ignoring patterns
 
 ## Testing
 
 Run the test suite:
 
 ```bash
-npm test
+bun run test
+```
+
+Or with coverage:
+
+```bash
+bun run test test:coverage
 ```
 
 ## Limitations
@@ -209,6 +245,7 @@ npm test
 - Polling-based file watching (not real-time)
 - Assumes UTF-8 text files
 - No support for file deletion processing
+- Only processes files on add/change events
 
 ## Contributing
 

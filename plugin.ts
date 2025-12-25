@@ -10,9 +10,9 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   install(app: TokenRingApp) {
-    const config = app.getConfigSlice('codewatch', CodeWatchConfigSchema);
+    const config = app.getConfigSlice('codewatch', CodeWatchConfigSchema.optional());
     if (config) {
       app.addServices(new CodeWatchService(app, config));
     }
-  }
+  },
 } satisfies TokenRingPlugin;

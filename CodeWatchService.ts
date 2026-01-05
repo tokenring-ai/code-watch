@@ -89,7 +89,7 @@ export default class CodeWatchService implements TokenRingService {
     const text = await fileSystemProvider.readFile(filePath);
     if (!text) return;
 
-    const lines = text.split("\n");
+    const lines = text.toString('utf-8').split("\n");
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();

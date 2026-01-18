@@ -1,12 +1,13 @@
 import {Agent, AgentCommandService, AgentManager} from "@tokenring-ai/agent";
 import TokenRingApp from "@tokenring-ai/app";
-import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 import {TokenRingService} from "@tokenring-ai/app/types";
+import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 import createIgnoreFilter from "@tokenring-ai/filesystem/tools/util/createIgnoreFilter";
 import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
 import async from "async";
-import {CodeWatchConfigSchema} from "./index.ts";
 import z from "zod";
+import {CodeWatchConfigSchema} from "./index.ts";
+
 type FileSystemConfig = {
   pollInterval: number;
   stabilityThreshold: number;

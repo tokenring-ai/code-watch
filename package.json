@@ -8,6 +8,8 @@
     "zod": "^4.3.6",
     "@tokenring-ai/agent": "0.2.0",
     "@tokenring-ai/filesystem": "0.2.0",
+    "@tokenring-ai/utility": "0.2.0",
+    "async": "^3.2.6",
     "ignore": "^7.0.5"
   },
   "exports": {

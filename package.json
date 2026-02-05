@@ -26,6 +26,7 @@
   "type": "module",
   "devDependencies": {
     "vitest": "^4.0.18",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@types/async": "^3.2.25"
   }
 }

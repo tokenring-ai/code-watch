@@ -15,7 +15,7 @@ type FileSystemConfig = {
 };
 
 export default class CodeWatchService implements TokenRingService {
-  name = "CodeWatchService";
+  readonly name = "CodeWatchService";
   description =
     "Provides CodeWatch functionality that monitors files for AI comments";
   workQueue

@@ -24,7 +24,7 @@ export default class CodeWatchService implements TokenRingService {
       try {
         await this.processFileForAIComments(task);
       } catch (err) {
-        app.serviceError(`Error processing file ${task.filePath}:`, err);
+        app.serviceError(this, `Error processing file ${task.filePath}:`, err);
       }
       callback();
     }, config.concurrency);
@@ -72,7 +72,7 @@ export default class CodeWatchService implements TokenRingService {
       .on("add", (filePath: string) => onFileChanged("add", filePath))
       .on("change", (filePath: string) => onFileChanged("change", filePath))
       .on("unlink", (filePath: string) => onFileChanged("unlink", filePath))
-      .on("error", (error: unknown) => this.app.serviceError("Error in file watcher:", error));
+      .on("error", (error: unknown) => this.app.serviceError(this, "Error in file watcher:", error));
 
     return waitForAbort(signal, async (ev) => {
       watcher.close();
@@ -158,7 +158,7 @@ export default class CodeWatchService implements TokenRingService {
     const config = this.config.filesystems[fileSystemProviderName];
     const agent = await agentManager.spawnAgent({agentType: config.agentType, headless: true});
     fileSystemService.setActiveFileSystem(fileSystemProviderName, agent);
-    this.app.serviceOutput(`[CodeWatchService] Code modification triggered from ${filePath}:${lineNumber}, running a Code Modification Agent`,);
+    this.app.serviceOutput(this, `Code modification triggered from ${filePath}:${lineNumber}, running a Code Modification Agent`,);
     await this.runCodeModification(`
 The user has edited the file ${filePath}, included above, adding instructions to the file, which they expect AI to execute.
 Look for any lines in the file marked with the tag AI!, which contain the users instructions.

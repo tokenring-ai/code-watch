@@ -4,11 +4,11 @@
 
 The CodeWatch service provides functionality for monitoring files for AI comments and triggering automated code modification workflows. It integrates with the TokenRing AI framework to automatically execute actions based on special comments like `# AI!` or `// AI!` in code files.
 
-This service watches the configured file systems for file additions and changes. When a file is modified, it scans for comment lines that contain AI triggers. The service processes `AI!` comments by spawning code modification agents to execute the instructions.
+This service watches configured file systems for file additions and changes. When a file is modified, it scans for comment lines that contain AI triggers. The service processes `AI!` comments by spawning code modification agents to execute the instructions.
 
-## Key Features
+### Key Features
 
-- **File System Monitoring**: Watches multiple filesystems for file changes using a virtual filesystem provider
+- **File System Monitoring**: Watches multiple filesystems for file additions and changes using a virtual filesystem provider
 - **AI Comment Detection**: Detects AI triggers in both Python/shell (`#`) and C-style (`//`) comments
 - **Smart Change Handling**: Uses stability thresholds to debounce rapid file changes
 - **Concurrent Processing**: Processes files concurrently with configurable worker queue via `async.queue`
@@ -55,6 +55,8 @@ export default {
 The configuration schema is defined in `index.ts`:
 
 ```typescript
+import {z} from "zod";
+
 export const CodeWatchConfigSchema = z.object({
   filesystems: z.record(z.string(), z.object({
     pollInterval: z.number().default(1000),
@@ -115,28 +117,44 @@ app.install(codeWatch, {
 | stabilityThreshold | number | 2000 | Time in milliseconds to wait after a change before processing |
 | agentType | string | - | Type of agent to spawn for code modifications |
 
+## AI Comment Detection Pattern
+
+The service detects AI triggers using two patterns:
+
+1. **Lines starting with `# AI` or `// AI`**: Triggers code modification processing
+2. **Lines ending with `AI!`**: Triggers code modification processing regardless of prefix content
+
+**Detection flow**:
+- Lines starting with `#` or `//` are scanned
+- Lines matching either pattern are sent to `checkAndTriggerAIAction()`
+- Comments starting with `# AI` or `// AI` call `handleAIComment()`
+- Comments ending with `AI!` call `handleAIComment()`
+- Only comments with `AI!` in content trigger code modification via `triggerCodeModification()`
+
+### AI Comment Types
+
+The service supports one type of AI comment:
+
+| Pattern | Description |
+|---------|-------------|
+| `AI!` | Indicates a command that AI must execute. This is a critical instruction that requires completion. |
+
+**Note**: The `AI!` marker must be present in the comment content for code modification to be triggered. Comments that start with `# AI` or `// AI` but don't contain `AI!` will be detected but won't trigger action.
+
 ## Agent Configuration
 
 The plugin spawns agents for code modification tasks. Agents are spawned in headless mode (without human interaction).
-
-### AI Comment Patterns
-
-The service detects and handles the following AI comment patterns:
-
-1. **Lines starting with `# AI` or `// AI`**: Triggers code modification
-2. **Lines ending with `AI!`**: Triggers code modification
-3. **Multi-line comments**: Only single-line comments are currently supported
 
 ### Agent Workflow
 
 When an `AI!` comment is detected in a file:
 
 1. The service spawns an agent of the specified type in headless mode
-2. The file is added to the agent's chat context
-3. The agent executes the instruction from the `AI!` comment
+2. The file is added to the agent's chat context using `FileSystemService.addFileToChat()`
+3. The agent executes the instruction from the `AI!` comment via `/work` command
 4. The agent uses available tools to complete the requested task
 5. The agent updates the file using the file write tool
-6. The service removes the `AI!` comment from the file as a completion marker
+6. The service removes the `AI!` comment from the file as a completion marker (handled by the agent)
 
 ## Services
 
@@ -157,16 +175,18 @@ The `CodeWatchService` class implements `TokenRingService` and provides the foll
 constructor(app: TokenRingApp, config: z.output<typeof CodeWatchConfigSchema>)
 ```
 
-**Parameters:**
+**Parameters**:
 
 - `app`: TokenRing application instance
 - `config`: Configuration object for service settings
 
-**Properties:**
+**Properties**:
 
 - `name`: Service name, set to `"CodeWatchService"`
 - `description`: Service description
 - `workQueue`: Async queue for concurrent file processing operations
+- `app`: TokenRing application instance
+- `config`: Service configuration
 
 #### Methods
 
@@ -174,131 +194,136 @@ constructor(app: TokenRingApp, config: z.output<typeof CodeWatchConfigSchema>)
 
   Starts the service and begins monitoring files for changes across all configured filesystems.
 
-  **Parameters:**
+  **Parameters**:
 
   - `signal`: AbortSignal to cancel the service
 
-  **Returns:** Promise that resolves when the service stops
+  **Returns**: Promise that resolves when the service stops
 
-  **Behavior:**
+  **Behavior**:
 
   - Starts monitoring for each configured filesystem
   - Handles graceful shutdown when signal is aborted
-  - Returns immediately after all watchers are set up
+  - Returns after all watchers are set up
 
-- `watchFileSystem(fileSystemProviderName: string, filesystemConfig: FileSystemConfig, signal: AbortSignal): Promise<void>`
+- `async watchFileSystem(fileSystemProviderName: string, filesystemConfig: FileSystemConfig, signal: AbortSignal): Promise<void>`
 
   Configures a new filesystem to watch.
 
-  **Parameters:**
+  **Parameters**:
 
   - `fileSystemProviderName`: Unique identifier for the filesystem
   - `filesystemConfig`: Configuration object including `pollInterval`, `stabilityThreshold`, and `agentType`
   - `signal`: AbortSignal to cancel the watcher
 
-  **Returns:** Promise that resolves when the watcher is set up
+  **Returns**: Promise that resolves when the watcher is set up
 
-  **Behavior:**
+  **Behavior**:
 
   - Creates a file system watcher using the configured filesystem provider
   - Sets up event handlers for `add`, `change`, and `unlink` events
   - Implements debouncing using stability threshold to handle rapid changes
   - Processes files that pass the stability threshold
-  - Uses ignore patterns from the filesystem provider
+  - Uses ignore patterns from the filesystem provider via `createIgnoreFilter()`
+  - Returns after setting up the watcher and waiting for abort signal
 
-- `processFileForAIComments({filePath, fileSystemProviderName}: {filePath: string, fileSystemProviderName: string}): Promise<void>`
+- `async processFileForAIComments({filePath, fileSystemProviderName}: {filePath: string, fileSystemProviderName: string}): Promise<void>`
 
   Scans a file for AI comments and processes them.
 
-  **Parameters:**
+  **Parameters**:
 
   - `filePath`: Path to the file
   - `fileSystemProviderName`: Name of the filesystem provider
 
-  **Returns:** Promise that resolves when processing is complete
+  **Returns**: Promise that resolves when processing is complete
 
-  **Behavior:**
+  **Behavior**:
 
-  - Reads the file content
+  - Reads the file content from the filesystem provider
   - Splits content into lines
-  - Checks each line for AI comment patterns
-  - Queues files with AI comments for processing
+  - Checks each line for AI comment patterns:
+    - Lines starting with `#` (Python/shell style)
+    - Lines starting with `//` (C-style)
+  - Calls `checkAndTriggerAIAction()` for each comment line
 
-- `checkAndTriggerAIAction(line: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
+- `async checkAndTriggerAIAction(line: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
 
   Checks a comment line for AI triggers and initiates action.
 
-  **Parameters:**
+  **Parameters**:
 
   - `line`: The comment line content
   - `filePath`: Path of the file containing the comment
   - `lineNumber`: Line number in the file
   - `fileSystemProviderName`: Name of the filesystem provider
 
-  **Returns:** Promise that resolves when action is initiated
+  **Returns**: Promise that resolves when action is initiated
 
-  **AI Trigger Patterns:**
+  **AI Trigger Patterns**:
 
-  - Lines starting with `# AI`, `// AI`
+  - Lines starting with `# AI` or `// AI`
   - Lines ending with `AI!`
 
-- `handleAIComment(commentLine: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
+- `async handleAIComment(commentLine: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
 
   Handles processing of a specific AI comment type.
 
-  **Parameters:**
+  **Parameters**:
 
   - `commentLine`: The comment line content
   - `filePath`: Path of the file
   - `lineNumber`: Line number in the file
   - `fileSystemProviderName`: Name of the filesystem provider
 
-  **Returns:** Promise that resolves when handling is complete
+  **Returns**: Promise that resolves when handling is complete
 
-  **Behavior:**
+  **Behavior**:
 
-  - Extracts the actual comment content (removes comment markers)
+  - Extracts the actual comment content (removes `# ` or `// ` markers)
   - Checks if comment contains `AI!` marker
-  - Triggers code modification if `AI!` is present
+  - Triggers code modification if `AI!` is present via `triggerCodeModification()`
 
-- `triggerCodeModification(content: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
+- `async triggerCodeModification(content: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
 
   Triggers code modification agent for an `AI!` comment.
 
-  **Parameters:**
+  **Parameters**:
 
   - `content`: The content of the comment
   - `filePath`: Path of the file
   - `lineNumber`: Line number in the file
   - `fileSystemProviderName`: Name of the filesystem provider
 
-  **Returns:** Promise that resolves when code modification starts
+  **Returns**: Promise that resolves when code modification starts
 
-  **Behavior:**
+  **Behavior**:
 
-  - Retrieves AgentManager and FileSystemService
-  - Spawns agent of specified type in headless mode
-  - Sets active filesystem for the agent
+  - Retrieves `AgentManager` and `FileSystemService` from the app
+  - Gets the agent type from the filesystem configuration
+  - Spawns agent of specified type in headless mode via `agentManager.spawnAgent()`
+  - Sets active filesystem for the agent via `fileSystemService.setActiveFileSystem()`
   - Creates and executes modification prompt
-  - Removes `AI!` comment after completion
+  - Calls `runCodeModification()` to execute the agent
+  - Agent is responsible for removing the `AI!` comment after completion
 
-- `runCodeModification(prompt: string, filePath: string, agent: Agent): Promise<void>`
+- `async runCodeModification(prompt: string, filePath: string, agent: Agent): Promise<void>`
 
   Executes code modification agent.
 
-  **Parameters:**
+  **Parameters**:
 
   - `prompt`: The instruction prompt for the agent
   - `filePath`: Path of the file
   - `agent`: The Agent instance to execute commands on
 
-  **Returns:** Promise that resolves when modification is complete
+  **Returns**: Promise that resolves when modification is complete
 
-  **Behavior:**
+  **Behavior**:
 
-  - Adds file to agent's chat context
-  - Retrieves AgentCommandService from agent
-  - Executes `/work` command with the prompt
+  - Adds file to agent's chat context via `fileSystemService.addFileToChat()`
+  - Retrieves `AgentCommandService` from the agent
+  - Executes `/work` command with the prompt via `agentCommandService.executeAgentCommand()`
   - Waits for agent to complete the task
 
 ## Providers

@@ -522,7 +522,6 @@ bun build
 ```
 
 ### Package Structure
-
 ```
 pkg/code-watch/
 ├── index.ts              # Configuration schema and exports
@@ -531,7 +530,7 @@ pkg/code-watch/
 ├── package.json          # Package metadata and dependencies
 ├── README.md             # This documentation
 ├── vitest.config.ts      # Test configuration
-└── BRAINSTORM.md         # Feature brainstorming and roadmap
+└── LICENSE               # MIT License
 ```
 
 ## Dependencies
@@ -552,8 +551,8 @@ pkg/code-watch/
 
 | Package | Version | Description |
 |---------|---------|-------------|
-| `vitest` | ^4.1.0 | Testing framework |
-| `typescript` | ^5.9.3 | TypeScript compiler |
+| `vitest` | ^4.1.1 | Testing framework |
+| `typescript` | ^6.0.2 | TypeScript compiler |
 | `@types/async` | ^3.2.25 | Async type definitions |
 
 ## License

@@ -18,7 +18,8 @@ export default class CodeWatchService implements TokenRingService {
   readonly name = "CodeWatchService";
   description =
     "Provides CodeWatch functionality that monitors files for AI comments";
-  workQueue
+  readonly workQueue: async.QueueObject<{ filePath: string, fileSystemProviderName: string }>;
+
   constructor(readonly app: TokenRingApp, readonly config: z.output<typeof CodeWatchConfigSchema>) {
     this.workQueue = async.queue<{ filePath: string, fileSystemProviderName: string}>(async (task, callback) => {
       try {
@@ -108,18 +109,19 @@ export default class CodeWatchService implements TokenRingService {
 
   /**
    * Check if a comment line contains AI triggers and handle them
-   * @param line - The comment line
+   * @param line - The comment line (already trimmed)
    * @param filePath - Path to the file containing the comment
    * @param lineNumber - Line number in the file
    * @param fileSystemProviderName
    */
   async checkAndTriggerAIAction(line: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void> {
-    // Check for comments that start with AI, AI!, or AI? --
-    if (line.startsWith("# AI") || line.startsWith("// AI")) {
-      await this.handleAIComment(line, filePath, lineNumber, fileSystemProviderName);
-    }
-    // Check for comments that end with AI, AI!, or AI? --
-    else if (line.endsWith("AI!")) {
+    // Check for AI! triggers in the line
+    // Pattern 1: Line starts with # AI or // AI (comment at beginning of line)
+    const startsWithAIPattern = line.startsWith("# AI") || line.startsWith("// AI");
+    // Pattern 2: Line contains AI! anywhere (for inline comments or end-of-line triggers)
+    const containsAIExclamation = line.includes("AI!");
+
+    if (startsWithAIPattern || containsAIExclamation) {
       await this.handleAIComment(line, filePath, lineNumber, fileSystemProviderName);
     }
   }
@@ -156,16 +158,24 @@ export default class CodeWatchService implements TokenRingService {
     const agentManager = this.app.requireService(AgentManager);
     const fileSystemService = this.app.requireService(FileSystemService);
     const config = this.config.filesystems[fileSystemProviderName];
-    const agent = await agentManager.spawnAgent({agentType: config.agentType, headless: true});
+
+    let agent: Agent;
+    try {
+      agent = await agentManager.spawnAgent({agentType: config.agentType, headless: true});
+    } catch (error) {
+      this.app.serviceError(this, `Failed to spawn agent for code modification at ${filePath}:${lineNumber}:`, error);
+      return;
+    }
+
     fileSystemService.setActiveFileSystem(fileSystemProviderName, agent);
-    this.app.serviceOutput(this, `Code modification triggered from ${filePath}:${lineNumber}, running a Code Modification Agent`,);
+    this.app.serviceOutput(this, `Code modification triggered from ${filePath}:${lineNumber}, running a Code Modification Agent`);
     await this.runCodeModification(`
 The user has edited the file ${filePath}, included above, adding instructions to the file, which they expect AI to execute.
 Look for any lines in the file marked with the tag AI!, which contain the users instructions.
 Complete the instructions in that line or in any nearby comments, using any tools available to you to complete the task.
 Once complete, update the file using the file_write tool. You MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.
 
-`.trim(), filePath, agent)
+`.trim(), filePath, agent);
   }
 
   async runCodeModification(prompt: string, filePath: string, agent: Agent) {

@@ -1,6 +1,6 @@
 {
   "name": "@tokenring-ai/code-watch",
-  "description": "Service for watching code changes and triggering actions",
+  "description": "Background service that triggers agents when specific AI comments are detected in code.",
   "version": "0.2.0",
   "dependencies": {
     "@tokenring-ai/app": "0.2.0",

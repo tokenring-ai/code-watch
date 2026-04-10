@@ -1,8 +1,8 @@
-import {TokenRingPlugin} from "@tokenring-ai/app";
+import type {TokenRingPlugin} from "@tokenring-ai/app";
 import {z} from "zod";
 import CodeWatchService from "./CodeWatchService.ts";
 import {CodeWatchConfigSchema} from "./index.ts";
-import packageJSON from './package.json' with {type: 'json'};
+import packageJSON from "./package.json" with {type: "json"};
 
 const packageConfigSchema = z.object({
   codewatch: CodeWatchConfigSchema.optional(),
@@ -18,5 +18,5 @@ export default {
       app.addServices(new CodeWatchService(app, config.codewatch));
     }
   },
-  config: packageConfigSchema
+  config: packageConfigSchema,
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;

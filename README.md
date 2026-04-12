@@ -2,19 +2,35 @@
 
 ## Overview
 
-The `@tokenring-ai/code-watch` package provides a file monitoring service for the Token Ring AI ecosystem. It watches configured filesystems for file changes, detects special AI comment patterns (like `# AI!` or `// AI!`), and automatically spawns agents to execute code modifications based on those instructions.
+The `@tokenring-ai/code-watch` package provides a file monitoring service for the
+Token Ring AI ecosystem. It watches configured filesystems for file changes,
+detects special AI comment patterns (like `# AI!` or `// AI!`), and automatically
+spawns agents to execute code modifications based on those instructions.
 
-This service uses polling-based file system watching with configurable intervals and stability thresholds to debounce rapid file changes. When an AI comment with the `AI!` marker is detected, the service spawns a configured agent type in headless mode to execute the requested code modifications.
+This service uses polling-based file system watching with configurable intervals
+and stability thresholds to debounce rapid file changes. When an AI comment with
+the `AI!` marker is detected, the service spawns a configured agent type in
+headless mode to execute the requested code modifications.
 
 ### Key Features
 
-- **File System Monitoring**: Watches multiple filesystems for file additions and changes using virtual filesystem providers
-- **AI Comment Detection**: Detects AI triggers in both Python/shell (`#`) and C-style (`//`) comments
-- **Smart Change Handling**: Uses stability thresholds to debounce rapid file changes
-- **Concurrent Processing**: Processes files concurrently with configurable worker queue via `async.queue`
-- **Agent Integration**: Automatically spawns appropriate agents to execute AI instructions in headless mode
+- **File System Monitoring**: Watches multiple filesystems for file additions
+  and changes using virtual filesystem providers
+- **AI Comment Detection**: Detects AI triggers in both Python/shell (`#`) and
+  C-style (`//`) comments
+- **Smart Change Handling**: Uses stability thresholds to debounce rapid
+  file changes
+- **Concurrent Processing**: Processes files concurrently with configurable
+  worker queue via `async.queue`
+- **Agent Integration**: Automatically spawns appropriate agents to execute
+  AI instructions in headless mode
 - **Error Handling**: Comprehensive error logging and graceful failure handling
 - **Ignore Filtering**: Respects ignore patterns from filesystem providers
+
+### Plugin Display Name
+
+- **Name**: `@tokenring-ai/code-watch`
+- **Display Name**: Code Watcher
 
 ## Installation
 
@@ -28,6 +44,7 @@ bun add @tokenring-ai/code-watch
 - `@tokenring-ai/agent`: 0.2.0
 - `@tokenring-ai/filesystem`: 0.2.0
 - `@tokenring-ai/utility`: 0.2.0
+- `@tokenring-ai/chat`: 0.2.0
 - `zod`: ^4.3.6
 - `async`: ^3.2.6
 - `ignore`: ^7.0.5
@@ -46,7 +63,8 @@ bun add @tokenring-ai/code-watch
 
 ### CodeWatchService
 
-The main service responsible for file monitoring and AI comment processing. Implements the `TokenRingService` interface.
+The main service responsible for file monitoring and AI comment processing.
+Implements the `TokenRingService` interface.
 
 ```typescript
 import CodeWatchService from "@tokenring-ai/code-watch/CodeWatchService";
@@ -67,18 +85,19 @@ constructor(app: TokenRingApp, config: z.output<typeof CodeWatchConfigSchema>)
 **Properties:**
 
 | Property | Type | Description |
-|----------|------|-------------|
+| :--- | :--- | :--- |
 | `name` | `"CodeWatchService"` | Service name |
 | `description` | `string` | Service description |
 | `app` | `TokenRingApp` | TokenRing application instance |
 | `config` | `CodeWatchConfig` | Service configuration |
-| `workQueue` | `Async.Queue<{ filePath: string, fileSystemProviderName: string }>` | Async queue for concurrent file processing operations |
+| `workQueue` | `Async.Queue` | Async queue for concurrent file processing |
 
 #### Methods
 
 ##### `async run(signal: AbortSignal): Promise<void>`
 
-Starts the service and begins monitoring files for changes across all configured filesystems.
+Starts the service and begins monitoring files for changes across all
+configured filesystems.
 
 **Parameters:**
 
@@ -93,14 +112,15 @@ Starts the service and begins monitoring files for changes across all configured
 - Returns after all watchers are set up
 - Handles graceful shutdown when signal is aborted
 
-##### `async watchFileSystem(fileSystemProviderName: string, filesystemConfig: FileSystemConfig, signal: AbortSignal): Promise<void>`
+##### `async watchFileSystem(fileSystemProviderName, filesystemConfig, signal)`
 
-Configures a new filesystem to watch.
+Sets up a file system watcher on an existing filesystem provider.
 
 **Parameters:**
 
 - `fileSystemProviderName`: Unique identifier for the filesystem provider
-- `filesystemConfig`: Configuration object including `pollInterval`, `stabilityThreshold`, and `agentType`
+- `filesystemConfig`: Configuration object including `pollInterval`,
+  `stabilityThreshold`, and `agentType`
 - `signal`: `AbortSignal` to cancel the watcher
 
 **Returns:** `Promise<void>` that resolves when the watcher is set up
@@ -116,10 +136,15 @@ Configures a new filesystem to watch.
 - Uses ignore patterns from the filesystem provider via `createIgnoreFilter()`
 - Returns after setting up the watcher and waiting for abort signal
 
+**Requirements:**
+
+- The filesystem provider must implement the `watch()` method
+- Provider must be registered with `FileSystemService`
+
 **Event Handling:**
 
 ```typescript
-const onFileChanged = (eventType: string, filePath: string) => {
+const onFileChanged = (eventType, filePath) => {
   if (modifiedFiles.has(filePath)) {
     clearTimeout(modifiedFiles.get(filePath));
     modifiedFiles.delete(filePath);
@@ -133,7 +158,7 @@ const onFileChanged = (eventType: string, filePath: string) => {
 };
 ```
 
-##### `async processFileForAIComments({filePath, fileSystemProviderName}: {filePath: string, fileSystemProviderName: string}): Promise<void>`
+##### `async processFileForAIComments({filePath, fileSystemProviderName})`
 
 Scans a file for AI comments and processes them.
 
@@ -153,7 +178,7 @@ Scans a file for AI comments and processes them.
   - Lines starting with `//` (C-style)
 - Calls `checkAndTriggerAIAction()` for each comment line
 
-##### `async checkAndTriggerAIAction(line: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
+##### `async checkAndTriggerAIAction(line, filePath, lineNumber, fileSystemProviderName)`
 
 Checks a comment line for AI triggers and initiates action.
 
@@ -169,11 +194,11 @@ Checks a comment line for AI triggers and initiates action.
 **AI Trigger Patterns:**
 
 - Lines starting with `# AI` or `// AI`
-- Lines ending with `AI!`
+- Lines containing `AI!` anywhere
 
 If either pattern matches, calls `handleAIComment()`.
 
-##### `async handleAIComment(commentLine: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
+##### `async handleAIComment(commentLine, filePath, lineNumber, fileSystemProviderName)`
 
 Handles processing of a specific AI comment.
 
@@ -188,7 +213,7 @@ Handles processing of a specific AI comment.
 
 **Behavior:**
 
-- Extracts the actual comment content (removes `# ` or `// ` markers)
+- Extracts the actual comment content (removes `#` or `//` markers)
 - Checks if comment contains `AI!` marker
 - Triggers code modification if `AI!` is present via `triggerCodeModification()`
 
@@ -203,7 +228,7 @@ if (commentLine.startsWith("# ")) {
 }
 ```
 
-##### `async triggerCodeModification(content: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void>`
+##### `async triggerCodeModification(content, filePath, lineNumber, fileSystemProviderName)`
 
 Triggers code modification agent for an `AI!` comment.
 
@@ -229,12 +254,13 @@ Triggers code modification agent for an `AI!` comment.
 **Prompt Template:**
 
 The service generates a prompt that instructs the agent to:
+
 1. Look for lines marked with `AI!` tag
 2. Complete the instructions in that line or nearby comments
 3. Update the file using the file_write tool
-4. **Must remove** any lines that end with `AI!`
+4. **Must remove** any lines ending with `AI!`
 
-##### `async runCodeModification(prompt: string, filePath: string, agent: Agent): Promise<void>`
+##### `async runCodeModification(prompt, filePath, agent)`
 
 Executes code modification agent.
 
@@ -250,7 +276,7 @@ Executes code modification agent.
 
 - Adds file to agent's chat context via `fileSystemService.addFileToChat()`
 - Retrieves `AgentCommandService` from the agent
-- Executes `/work` command with the prompt via `agentCommandService.executeAgentCommand()`
+- Executes `/work` command with the prompt via `executeAgentCommand()`
 - Waits for agent to complete the task
 
 ## Usage Examples
@@ -340,9 +366,11 @@ The service detects AI comments using these patterns:
 
 1. **Lines starting with `# AI`** (Python/shell style)
 2. **Lines starting with `// AI`** (C-style)
-3. **Lines ending with `AI!`** (any style)
+3. **Lines containing `AI!`** (any style)
 
-**Important:** Only comments containing `AI!` will trigger code modification. Comments that match the prefix patterns but don't contain `AI!` will be detected but won't trigger action.
+**Important:** Only comments containing `AI!` will trigger code modification.
+Comments that match the prefix patterns but don't contain `AI!` will be
+detected but won't trigger action.
 
 ## Configuration
 
@@ -363,6 +391,7 @@ const packageConfigSchema = z.object({
 
 export default {
   name: packageJSON.name,
+  displayName: "Code Watcher",
   version: packageJSON.version,
   description: packageJSON.description,
   install(app, config) {
@@ -395,39 +424,34 @@ export const CodeWatchConfigSchema = z.object({
 #### Top-Level Configuration
 
 | Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `codewatch` | `CodeWatchConfig` | optional | Main configuration for CodeWatch service |
+| :--- | :--- | :--- | :--- |
+| `codewatch` | `CodeWatchConfig` | optional | Main configuration |
 
 #### CodeWatchConfig
 
 | Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `filesystems` | `Record<string, FileSystemConfig>` | required | Configuration for each filesystem to monitor |
-| `concurrency` | `number` | 1 | Maximum concurrent file processing operations |
+| :--- | :--- | :--- | :--- |
+| `filesystems` | `Record<string, FileSystemConfig>` | required | Filesystems to monitor |
+| `concurrency` | `number` | 1 | Max concurrent operations |
 
 #### FileSystemConfig
 
 | Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `pollInterval` | `number` | 1000 | Polling interval in milliseconds for detecting file changes |
-| `stabilityThreshold` | `number` | 2000 | Time in milliseconds to wait after a change before processing |
-| `agentType` | `string` | required | Type of agent to spawn for code modifications |
+| :--- | :--- | :--- | :--- |
+| `pollInterval` | `number` | 1000 | Polling interval (ms) |
+| `stabilityThreshold` | `number` | 2000 | Debounce threshold (ms) |
+| `agentType` | `string` | required | Agent type to spawn |
 
 ### Configuration Example
 
-```typescript
-{
-  codewatch: {
-    filesystems: {
-      local: {
-        pollInterval: 1000,      // Check for changes every 1 second
-        stabilityThreshold: 2000, // Wait 2 seconds after last change before processing
-        agentType: 'code-modification-agent'
-      }
-    },
-    concurrency: 2  // Process up to 2 files concurrently
-  }
-}
+```yaml
+codewatch:
+  filesystems:
+    local:
+      pollInterval: 1000
+      stabilityThreshold: 2000
+      agentType: 'code-modification-agent'
+  concurrency: 2
 ```
 
 ## Integration
@@ -465,6 +489,9 @@ if (config.codewatch) {
 }
 ```
 
+**Note:** The service is only registered if `config.codewatch` is provided.
+The plugin is optional and can be installed without configuration.
+
 ### Required Services
 
 The `CodeWatchService` requires the following services to be available:
@@ -472,12 +499,22 @@ The `CodeWatchService` requires the following services to be available:
 - `FileSystemService`: For file operations and watching
 - `AgentManager`: For spawning agents to execute AI instructions
 
+### Filesystem Provider Requirements
+
+The filesystem provider must:
+
+- Be registered with `FileSystemService`
+- Implement the `watch()` method for file system watching
+- Support the `readFile()` method for reading file contents
+- Optionally provide ignore patterns via `createIgnoreFilter()`
+
 ### Agent Workflow
 
 When an `AI!` comment is detected in a file:
 
 1. The service spawns an agent of the specified type in headless mode
-2. The file is added to the agent's chat context using `FileSystemService.addFileToChat()`
+2. The file is added to the agent's chat context using
+   `FileSystemService.addFileToChat()`
 3. The agent executes the instruction from the `AI!` comment via `/work` command
 4. The agent uses available tools to complete the requested task
 5. The agent updates the file using the file write tool
@@ -485,7 +522,12 @@ When an `AI!` comment is detected in a file:
 
 ## Chat Commands
 
-This package does not provide chat commands. It operates as a background service monitoring files for changes.
+This package does not provide chat commands. It operates as a background service
+monitoring files for changes.
+
+## Tools
+
+This package does not provide tools. It operates as a background service.
 
 ## RPC Endpoints
 
@@ -522,6 +564,7 @@ bun build
 ```
 
 ### Package Structure
+
 ```
 pkg/code-watch/
 ├── index.ts              # Configuration schema and exports
@@ -533,24 +576,22 @@ pkg/code-watch/
 └── LICENSE               # MIT License
 ```
 
-## Dependencies
-
-### Production Dependencies
+## Production Dependencies
 
 | Package | Version | Description |
-|---------|---------|-------------|
+| :--- | :--- | :--- |
 | `@tokenring-ai/app` | 0.2.0 | Core application framework |
 | `@tokenring-ai/agent` | 0.2.0 | Agent management and orchestration |
-| `@tokenring-ai/filesystem` | 0.2.0 | File system abstraction and providers |
+| `@tokenring-ai/filesystem` | 0.2.0 | File system abstraction |
 | `@tokenring-ai/utility` | 0.2.0 | Utility functions and helpers |
 | `zod` | ^4.3.6 | Schema validation |
 | `async` | ^3.2.6 | Concurrent processing utilities |
 | `ignore` | ^7.0.5 | Ignore pattern matching |
 
-### Development Dependencies
+## Development Dependencies
 
 | Package | Version | Description |
-|---------|---------|-------------|
+| :--- | :--- | :--- |
 | `vitest` | ^4.1.1 | Testing framework |
 | `typescript` | ^6.0.2 | TypeScript compiler |
 | `@types/async` | ^3.2.25 | Async type definitions |

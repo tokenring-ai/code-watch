@@ -33,7 +33,7 @@ export default class CodeWatchService implements TokenRingService {
     }>(async (task, callback) => {
       try {
         await this.processFileForAIComments(task);
-      } catch (err) {
+      } catch (err: unknown) {
         app.serviceError(this, `Error processing file ${task.filePath}:`, err);
       }
       callback();
@@ -88,7 +88,7 @@ export default class CodeWatchService implements TokenRingService {
         modifiedFiles.set(
           filePath,
           setTimeout(() => {
-            this.workQueue.push({filePath, fileSystemProviderName});
+            void this.workQueue.push({filePath, fileSystemProviderName});
           }),
         );
       }
@@ -231,11 +231,11 @@ export default class CodeWatchService implements TokenRingService {
 
     let agent: Agent;
     try {
-      agent = await agentManager.spawnAgent({
+      agent = agentManager.spawnAgent({
         agentType: config.agentType,
         headless: true,
       });
-    } catch (error) {
+    } catch (error: unknown) {
       this.app.serviceError(
         this,
         `Failed to spawn agent for code modification at ${filePath}:${lineNumber}:`,

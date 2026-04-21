@@ -1,4 +1,4 @@
-import {z} from "zod";
+import { z } from "zod";
 
 export const CodeWatchConfigSchema = z.object({
   filesystems: z.record(
@@ -13,4 +13,4 @@ export const CodeWatchConfigSchema = z.object({
   concurrency: z.number().default(1),
 });
 
-export {default as CodeWatchService} from "./CodeWatchService.ts";
+export { default as CodeWatchService } from "./CodeWatchService.ts";

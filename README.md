@@ -44,10 +44,8 @@ bun add @tokenring-ai/code-watch
 - `@tokenring-ai/agent`: 0.2.0
 - `@tokenring-ai/filesystem`: 0.2.0
 - `@tokenring-ai/utility`: 0.2.0
-- `@tokenring-ai/chat`: 0.2.0
 - `zod`: ^4.3.6
 - `async`: ^3.2.6
-- `ignore`: ^7.0.5
 
 ## Features
 
@@ -84,13 +82,13 @@ constructor(app: TokenRingApp, config: z.output<typeof CodeWatchConfigSchema>)
 
 **Properties:**
 
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `name` | `"CodeWatchService"` | Service name |
-| `description` | `string` | Service description |
-| `app` | `TokenRingApp` | TokenRing application instance |
-| `config` | `CodeWatchConfig` | Service configuration |
-| `workQueue` | `Async.Queue` | Async queue for concurrent file processing |
+| Property      | Type                 | Description                                |
+|:--------------|:---------------------|:-------------------------------------------|
+| `name`        | `"CodeWatchService"` | Service name                               |
+| `description` | `string`             | Service description                        |
+| `app`         | `TokenRingApp`       | TokenRing application instance             |
+| `config`      | `CodeWatchConfig`    | Service configuration                      |
+| `workQueue`   | `Async.Queue`        | Async queue for concurrent file processing |
 
 #### Methods
 
@@ -383,10 +381,10 @@ import { TokenRingPlugin } from "@tokenring-ai/app";
 import { z } from "zod";
 import CodeWatchService from "./CodeWatchService.ts";
 import { CodeWatchConfigSchema } from "./index.ts";
-import packageJSON from './package.json' with {type: 'json'};
+import packageJSON from './package.json' with { type: 'json' };
 
 const packageConfigSchema = z.object({
-  codewatch: CodeWatchConfigSchema.optional(),
+  codewatch: CodeWatchConfigSchema.exactOptional(),
 });
 
 export default {
@@ -409,11 +407,14 @@ The configuration schema is defined in `index.ts`:
 import { z } from "zod";
 
 export const CodeWatchConfigSchema = z.object({
-  filesystems: z.record(z.string(), z.object({
-    pollInterval: z.number().default(1000),
-    stabilityThreshold: z.number().default(2000),
-    agentType: z.string()
-  })),
+  filesystems: z.record(
+    z.string(),
+    z.object({
+      pollInterval: z.number().default(1000),
+      stabilityThreshold: z.number().default(2000),
+      agentType: z.string(),
+    }),
+  ),
 
   concurrency: z.number().default(1),
 });
@@ -423,24 +424,24 @@ export const CodeWatchConfigSchema = z.object({
 
 #### Top-Level Configuration
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
+| Field       | Type              | Default  | Description        |
+|:------------|:------------------|:---------|:-------------------|
 | `codewatch` | `CodeWatchConfig` | optional | Main configuration |
 
 #### CodeWatchConfig
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `filesystems` | `Record<string, FileSystemConfig>` | required | Filesystems to monitor |
-| `concurrency` | `number` | 1 | Max concurrent operations |
+| Field         | Type                               | Default  | Description               |
+|:--------------|:-----------------------------------|:---------|:--------------------------|
+| `filesystems` | `Record<string, FileSystemConfig>` | required | Filesystems to monitor    |
+| `concurrency` | `number`                           | 1        | Max concurrent operations |
 
 #### FileSystemConfig
 
-| Field | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `pollInterval` | `number` | 1000 | Polling interval (ms) |
-| `stabilityThreshold` | `number` | 2000 | Debounce threshold (ms) |
-| `agentType` | `string` | required | Agent type to spawn |
+| Field                | Type     | Default  | Description             |
+|:---------------------|:---------|:---------|:------------------------|
+| `pollInterval`       | `number` | 1000     | Polling interval (ms)   |
+| `stabilityThreshold` | `number` | 2000     | Debounce threshold (ms) |
+| `agentType`          | `string` | required | Agent type to spawn     |
 
 ### Configuration Example
 
@@ -565,7 +566,7 @@ bun build
 
 ### Package Structure
 
-```
+```text
 pkg/code-watch/
 ├── index.ts              # Configuration schema and exports
 ├── CodeWatchService.ts   # Main service implementation
@@ -578,22 +579,21 @@ pkg/code-watch/
 
 ## Production Dependencies
 
-| Package | Version | Description |
-| :--- | :--- | :--- |
-| `@tokenring-ai/app` | 0.2.0 | Core application framework |
-| `@tokenring-ai/agent` | 0.2.0 | Agent management and orchestration |
-| `@tokenring-ai/filesystem` | 0.2.0 | File system abstraction |
-| `@tokenring-ai/utility` | 0.2.0 | Utility functions and helpers |
-| `zod` | ^4.3.6 | Schema validation |
-| `async` | ^3.2.6 | Concurrent processing utilities |
-| `ignore` | ^7.0.5 | Ignore pattern matching |
+| Package                    | Version | Description                        |
+|:---------------------------|:--------|:-----------------------------------|
+| `@tokenring-ai/app`        | 0.2.0   | Core application framework         |
+| `@tokenring-ai/agent`      | 0.2.0   | Agent management and orchestration |
+| `@tokenring-ai/filesystem` | 0.2.0   | File system abstraction            |
+| `@tokenring-ai/utility`    | 0.2.0   | Utility functions and helpers      |
+| `zod`                      | ^4.3.6  | Schema validation                  |
+| `async`                    | ^3.2.6  | Concurrent processing utilities    |
 
 ## Development Dependencies
 
-| Package | Version | Description |
-| :--- | :--- | :--- |
-| `vitest` | ^4.1.1 | Testing framework |
-| `typescript` | ^6.0.2 | TypeScript compiler |
+| Package        | Version | Description            |
+|:---------------|:--------|:-----------------------|
+| `vitest`       | ^4.1.1  | Testing framework      |
+| `typescript`   | ^6.0.2  | TypeScript compiler    |
 | `@types/async` | ^3.2.25 | Async type definitions |
 
 ## License

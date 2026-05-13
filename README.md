@@ -172,8 +172,8 @@ Scans a file for AI comments and processes them.
 - Reads the file content from the filesystem provider
 - Splits content into lines
 - Checks each line for AI comment patterns:
-  - Lines starting with `#` (Python/shell style)
-  - Lines starting with `//` (C-style)
+- Lines starting with `#` (Python/shell style)
+- Lines starting with `//` (C-style)
 - Calls `checkAndTriggerAIAction()` for each comment line
 
 ##### `async checkAndTriggerAIAction(line, filePath, lineNumber, fileSystemProviderName)`

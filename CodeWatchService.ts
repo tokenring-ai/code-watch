@@ -163,7 +163,7 @@ export default class CodeWatchService implements TokenRingService {
 
   /**
    * Trigger code modification based on AI! comment
-   * @param content - Content of the comment
+   * @param _content - Content of the comment
    * @param filePath - Path to the file containing the comment
    * @param lineNumber - Line number in the file
    * @param fileSystemProviderName

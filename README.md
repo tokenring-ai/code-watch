@@ -2,8 +2,8 @@
 
 ## Overview
 
-The `@tokenring-ai/code-watch` package provides a file monitoring service for the
-Token Ring AI ecosystem. It watches configured filesystems for file changes,
+The `@tokenring-ai/code-watch` package provides a background service for the
+Token Ring AI ecosystem that monitors configured filesystems for file changes,
 detects special AI comment patterns (like `# AI!` or `// AI!`), and automatically
 spawns agents to execute code modifications based on those instructions.
 
@@ -40,10 +40,10 @@ bun add @tokenring-ai/code-watch
 
 ### Dependencies
 
-- `@tokenring-ai/app`: 0.2.0
-- `@tokenring-ai/agent`: 0.2.0
-- `@tokenring-ai/filesystem`: 0.2.0
-- `@tokenring-ai/utility`: 0.2.0
+- `@tokenring-ai/app`: workspace:*
+- `@tokenring-ai/agent`: workspace:*
+- `@tokenring-ai/filesystem`: workspace:*
+- `@tokenring-ai/utility`: workspace:*
 - `zod`: ^4.3.6
 - `async`: ^3.2.6
 
@@ -85,7 +85,7 @@ constructor(app: TokenRingApp, config: z.output<typeof CodeWatchConfigSchema>)
 | Property      | Type                 | Description                                |
 |:--------------|:---------------------|:-------------------------------------------|
 | `name`        | `"CodeWatchService"` | Service name                               |
-| `description` | `string`             | Service description                        |
+| `description` | `string`             | Service description: "Background service that triggers agents when specific AI comments are detected in code" |
 | `app`         | `TokenRingApp`       | TokenRing application instance             |
 | `config`      | `CodeWatchConfig`    | Service configuration                      |
 | `workQueue`   | `Async.Queue`        | Async queue for concurrent file processing |
@@ -172,8 +172,8 @@ Scans a file for AI comments and processes them.
 - Reads the file content from the filesystem provider
 - Splits content into lines
 - Checks each line for AI comment patterns:
-- Lines starting with `#` (Python/shell style)
-- Lines starting with `//` (C-style)
+  - Lines starting with `#` (Python/shell style)
+  - Lines starting with `//` (C-style)
 - Calls `checkAndTriggerAIAction()` for each comment line
 
 ##### `async checkAndTriggerAIAction(line, filePath, lineNumber, fileSystemProviderName)`
@@ -226,13 +226,13 @@ if (commentLine.startsWith("# ")) {
 }
 ```
 
-##### `async triggerCodeModification(content, filePath, lineNumber, fileSystemProviderName)`
+##### `async triggerCodeModification(_content, filePath, lineNumber, fileSystemProviderName)`
 
 Triggers code modification agent for an `AI!` comment.
 
 **Parameters:**
 
-- `content`: The content of the comment
+- `_content`: The content of the comment (unused in current implementation)
 - `filePath`: Path of the file
 - `lineNumber`: Line number in the file
 - `fileSystemProviderName`: Name of the filesystem provider
@@ -256,7 +256,7 @@ The service generates a prompt that instructs the agent to:
 1. Look for lines marked with `AI!` tag
 2. Complete the instructions in that line or nearby comments
 3. Update the file using the file_write tool
-4. **Must remove** any lines ending with `AI!`
+4. **Must remove** any lines that end with `AI!` - it is a critical failure to leave these lines in the file
 
 ##### `async runCodeModification(prompt, filePath, agent)`
 
@@ -579,22 +579,22 @@ pkg/code-watch/
 
 ## Production Dependencies
 
-| Package                    | Version | Description                        |
-|:---------------------------|:--------|:-----------------------------------|
-| `@tokenring-ai/app`        | 0.2.0   | Core application framework         |
-| `@tokenring-ai/agent`      | 0.2.0   | Agent management and orchestration |
-| `@tokenring-ai/filesystem` | 0.2.0   | File system abstraction            |
-| `@tokenring-ai/utility`    | 0.2.0   | Utility functions and helpers      |
-| `zod`                      | ^4.3.6  | Schema validation                  |
-| `async`                    | ^3.2.6  | Concurrent processing utilities    |
+| Package                    | Version    | Description                        |
+|:---------------------------|:-----------|:-----------------------------------|
+| `@tokenring-ai/app`        | workspace:* | Core application framework         |
+| `@tokenring-ai/agent`      | workspace:* | Agent management and orchestration |
+| `@tokenring-ai/filesystem` | workspace:* | File system abstraction            |
+| `@tokenring-ai/utility`    | workspace:* | Utility functions and helpers      |
+| `zod`                      | ^4.3.6     | Schema validation                  |
+| `async`                    | ^3.2.6     | Concurrent processing utilities    |
 
 ## Development Dependencies
 
-| Package        | Version | Description            |
-|:---------------|:--------|:-----------------------|
-| `vitest`       | ^4.1.1  | Testing framework      |
-| `typescript`   | ^6.0.2  | TypeScript compiler    |
-| `@types/async` | ^3.2.25 | Async type definitions |
+| Package        | Version  | Description            |
+|:---------------|:---------|:-----------------------|
+| `vitest`       | ^4.1.1   | Testing framework      |
+| `typescript`   | ^6.0.2   | TypeScript compiler    |
+| `@types/async` | ^3.2.25  | Async type definitions |
 
 ## License
 

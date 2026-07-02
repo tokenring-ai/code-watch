@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "dependencies": {
     "@tokenring-ai/app": "workspace:*",
-    "zod": "^4.3.6",
+    "zod": "^4.4.3",
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/filesystem": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",

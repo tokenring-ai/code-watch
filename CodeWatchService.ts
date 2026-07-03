@@ -108,7 +108,7 @@ export default class CodeWatchService implements TokenRingService {
     const lines = text.toString("utf-8").split("\n");
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+      const line = lines[i]!.trim();
 
       // Check for Python/shell style comments (# ...)
       if (line.startsWith("#")) {
@@ -171,7 +171,7 @@ export default class CodeWatchService implements TokenRingService {
   async triggerCodeModification(_content: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void> {
     const agentManager = this.app.requireService(AgentManager);
     const fileSystemService = this.app.requireService(FileSystemService);
-    const config = this.config.filesystems[fileSystemProviderName];
+    const config = this.config.filesystems[fileSystemProviderName]!;
 
     let agent: Agent;
     try {

@@ -2,6 +2,7 @@ import { type Agent, AgentCommandService, AgentManager } from "@tokenring-ai/age
 import type TokenRingApp from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
 import { ConfigurationError } from "@tokenring-ai/app/types";
+import type { FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemProvider";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 import createIgnoreFilter from "@tokenring-ai/filesystem/util/createIgnoreFilter";
 import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
@@ -60,7 +61,7 @@ export default class CodeWatchService implements TokenRingService {
     }
 
     // Use the virtual file system's watch method to create a watcher
-    const watcher = await fileSystemProvider.watch("./", {
+    const watcher: FileSystemWatcher = await fileSystemProvider.watch("./", {
       pollInterval: filesystemConfig.pollInterval,
       stabilityThreshold: filesystemConfig.stabilityThreshold,
       ignoreFilter: await createIgnoreFilter(fileSystemProvider),
@@ -86,10 +87,10 @@ export default class CodeWatchService implements TokenRingService {
 
     // Set up event handlers
     watcher
-      .on("add", (filePath: string) => onFileChanged("add", filePath))
-      .on("change", (filePath: string) => onFileChanged("change", filePath))
-      .on("unlink", (filePath: string) => onFileChanged("unlink", filePath))
-      .on("error", (error: unknown) => this.app.serviceError(this, "Error in file watcher:", error));
+      .on("add", filePath => onFileChanged("add", filePath))
+      .on("change", filePath => onFileChanged("change", filePath))
+      .on("unlink", filePath => onFileChanged("unlink", filePath))
+      .on("error", error => this.app.serviceError(this, "Error in file watcher:", error));
 
     return waitForAbort(signal, _ev => {
       watcher.close();

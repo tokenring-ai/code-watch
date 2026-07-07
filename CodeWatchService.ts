@@ -1,6 +1,7 @@
 import { type Agent, AgentCommandService, AgentManager } from "@tokenring-ai/agent";
 import type TokenRingApp from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
+import { ConfigurationError } from "@tokenring-ai/app/types";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 import createIgnoreFilter from "@tokenring-ai/filesystem/util/createIgnoreFilter";
 import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
@@ -32,7 +33,7 @@ export default class CodeWatchService implements TokenRingService {
     }>(async (task, callback) => {
       try {
         await this.processFileForAIComments(task);
-      } catch (err: unknown) {
+      } catch (err) {
         app.serviceError(this, `Error processing file ${task.filePath}:`, err);
       }
       callback();
@@ -55,7 +56,7 @@ export default class CodeWatchService implements TokenRingService {
     const fileSystemProvider = fileSystemService.requireFileSystemProviderByName(fileSystemProviderName);
 
     if (!fileSystemProvider.watch) {
-      throw new Error(`File system provider '${fileSystemProviderName}' does not support watching`);
+      throw new ConfigurationError(this.name, `File system provider '${fileSystemProviderName}' does not support watching`);
     }
 
     // Use the virtual file system's watch method to create a watcher

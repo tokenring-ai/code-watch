@@ -7,7 +7,10 @@ export const CodeWatchConfigSchema = z
       .record(
         z.string(),
         z.object({
-          pollInterval: z.number().default(1000).meta({ unit: "ms", advanced: true, description: "How often to poll for file changes" } satisfies ConfigFieldMeta),
+          pollInterval: z
+            .number()
+            .default(1000)
+            .meta({ unit: "ms", advanced: true, description: "How often to poll for file changes" } satisfies ConfigFieldMeta),
           stabilityThreshold: z
             .number()
             .default(2000)
@@ -17,7 +20,10 @@ export const CodeWatchConfigSchema = z
       )
       .meta({ label: "Filesystems", description: "Watched filesystems, keyed by name" } satisfies ConfigFieldMeta),
 
-    concurrency: z.number().default(1).meta({ description: "Maximum number of change-handling agents running at once" } satisfies ConfigFieldMeta),
+    concurrency: z
+      .number()
+      .default(1)
+      .meta({ description: "Maximum number of change-handling agents running at once" } satisfies ConfigFieldMeta),
   })
   .meta({ label: "Code Watch", description: "Watches filesystems and spawns agents in response to changes" } satisfies ConfigFieldMeta);
 

@@ -573,7 +573,6 @@ pkg/code-watch/
 ├── plugin.ts             # Plugin definition and registration
 ├── package.json          # Package metadata and dependencies
 ├── README.md             # This documentation
-├── vitest.config.ts      # Test configuration
 └── LICENSE               # MIT License
 ```
 
@@ -592,7 +591,7 @@ pkg/code-watch/
 
 | Package        | Version  | Description            |
 |:---------------|:---------|:-----------------------|
-| `vitest`       | ^4.1.1   | Testing framework      |
+| `bun test`     | builtin  | Testing framework   |
 | `typescript`   | ^6.0.2   | TypeScript compiler    |
 | `@types/async` | ^3.2.25  | Async type definitions |
 

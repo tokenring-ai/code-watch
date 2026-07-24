@@ -18,5 +18,5 @@ export default {
       app.addServices(new CodeWatchService(app, config.codewatch));
     }
   },
-  config: packageConfigSchema,
+  configSchema: packageConfigSchema,
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;

@@ -5,6 +5,7 @@ import { ConfigurationError } from "@tokenring-ai/app/types";
 import type { FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemProvider";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 import createIgnoreFilter from "@tokenring-ai/filesystem/util/createIgnoreFilter";
+import EnhancedMap from "@tokenring-ai/utility/map/enhancedMap";
 import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
 import async from "async";
 import type z from "zod";
@@ -67,12 +68,12 @@ export default class CodeWatchService implements TokenRingService {
       ignoreFilter: await createIgnoreFilter(fileSystemProvider),
     });
 
-    const modifiedFiles = new Map<string, NodeJS.Timeout>();
+    const modifiedFiles = new EnhancedMap<string, NodeJS.Timeout>();
 
     const onFileChanged = (eventType: string, filePath: string) => {
       if (modifiedFiles.has(filePath)) {
-        clearTimeout(modifiedFiles.get(filePath));
-        modifiedFiles.delete(filePath);
+        const timer = modifiedFiles.deleteAndReturnItem(filePath);
+        clearTimeout(timer);
       }
 
       if (eventType === "add" || eventType === "change") {

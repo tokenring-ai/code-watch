@@ -6,7 +6,7 @@ import type { FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemProvi
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
 import createIgnoreFilter from "@tokenring-ai/filesystem/util/createIgnoreFilter";
 import EnhancedMap from "@tokenring-ai/utility/map/enhancedMap";
-import waitForAbort from "@tokenring-ai/utility/promise/waitForAbort";
+import EnhancedStringMap from "@tokenring-ai/utility/map/enhancedStringMap";
 import async from "async";
 import type z from "zod";
 import type { CodeWatchConfigSchema } from "./index.ts";
@@ -17,18 +17,36 @@ type FileSystemConfig = {
   agentType: string;
 };
 
+type CodeWatchConfig = z.output<typeof CodeWatchConfigSchema>;
+
 export default class CodeWatchService implements TokenRingService {
   readonly name = "CodeWatchService";
   description = "Provides CodeWatch functionality that monitors files for AI comments";
-  readonly workQueue: async.QueueObject<{
+
+  private readonly workQueue: async.QueueObject<{
     filePath: string;
     fileSystemProviderName: string;
   }>;
 
+  /** Live file watchers, keyed by filesystem provider name. */
+  private watchedFilesystems = new EnhancedStringMap<FileSystemWatcher>();
+  /** Debounce timers per filesystem provider, then per path. */
+  private stabilityTimers = new EnhancedStringMap<EnhancedMap<string, NodeJS.Timeout>>();
+
+  private config: CodeWatchConfig = {
+    filesystems: {},
+    concurrency: 1,
+  };
+
+  /** True after {@link start} has run — reconfigure only reconciles watchers once started. */
+  private started = false;
+
   constructor(
     readonly app: TokenRingApp,
-    readonly config: z.output<typeof CodeWatchConfigSchema>,
+    config?: CodeWatchConfig,
   ) {
+    if (config) this.config = config;
+
     this.workQueue = async.queue<{
       filePath: string;
       fileSystemProviderName: string;
@@ -39,21 +57,62 @@ export default class CodeWatchService implements TokenRingService {
         app.serviceError(this, `Error processing file ${task.filePath}:`, err);
       }
       callback();
-    }, config.concurrency);
+    }, this.config.concurrency);
   }
 
   /**
-   * Start the CodeWatchService
+   * Applies package config. Watchers are created in {@link start} (after filesystem
+   * providers have been registered); later reconfigures re-reconcile live watchers.
    */
-  async run(signal: AbortSignal): Promise<void> {
-    await Promise.all(
-      Object.entries(this.config.filesystems).map(([filesystemProviderName, filesystemConfig]) =>
-        this.watchFileSystem(filesystemProviderName, filesystemConfig, signal),
-      ),
-    );
+  async reconfigure(config: CodeWatchConfig): Promise<void> {
+    this.config = config;
+    this.workQueue.concurrency = config.concurrency;
+    if (this.started) {
+      await this.reconcileWatchers();
+    }
   }
 
-  async watchFileSystem(fileSystemProviderName: string, filesystemConfig: FileSystemConfig, signal: AbortSignal): Promise<void> {
+  /**
+   * Opens watchers for every configured filesystem. Called after all plugins
+   * have reconfigured so filesystem providers are available.
+   */
+  async start(): Promise<void> {
+    this.started = true;
+    await this.reconcileWatchers();
+  }
+
+  /**
+   * Closes every watcher and clears debounce timers. Replaces the old `run`/`waitForAbort` loop.
+   */
+  stop(): void {
+    this.started = false;
+    this.workQueue.kill();
+
+    this.watchedFilesystems.mapEntries(([name, watcher]) => {
+      this.clearStabilityTimers(name);
+      watcher.close();
+    });
+    this.workQueue.kill();
+  }
+
+  private async reconcileWatchers(): Promise<void> {
+    await this.watchedFilesystems.reconcileAgainstAsync(this.config.filesystems, {
+      creating: async (name, filesystemConfig) => this.openWatcher(name, filesystemConfig),
+      deleting: async (name, watcher) => {
+        this.clearStabilityTimers(name);
+        watcher.close();
+      },
+      updating: async (name, watcher, filesystemConfig) => {
+        this.clearStabilityTimers(name);
+        watcher.close();
+        const next = await this.openWatcher(name, filesystemConfig);
+        this.watchedFilesystems.set(name, next);
+        return next;
+      },
+    });
+  }
+
+  private async openWatcher(fileSystemProviderName: string, filesystemConfig: FileSystemConfig): Promise<FileSystemWatcher> {
     const fileSystemService = this.app.requireService(FileSystemService);
     const fileSystemProvider = fileSystemService.requireFileSystemProviderByName(fileSystemProviderName);
 
@@ -61,14 +120,14 @@ export default class CodeWatchService implements TokenRingService {
       throw new ConfigurationError(this.name, `File system provider '${fileSystemProviderName}' does not support watching`);
     }
 
-    // Use the virtual file system's watch method to create a watcher
-    const watcher: FileSystemWatcher = await fileSystemProvider.watch("./", {
+    const watcher = await fileSystemProvider.watch("./", {
       pollInterval: filesystemConfig.pollInterval,
       stabilityThreshold: filesystemConfig.stabilityThreshold,
       ignoreFilter: await createIgnoreFilter(fileSystemProvider),
     });
 
     const modifiedFiles = new EnhancedMap<string, NodeJS.Timeout>();
+    this.stabilityTimers.set(fileSystemProviderName, modifiedFiles);
 
     const onFileChanged = (eventType: string, filePath: string) => {
       if (modifiedFiles.has(filePath)) {
@@ -80,22 +139,30 @@ export default class CodeWatchService implements TokenRingService {
         modifiedFiles.set(
           filePath,
           setTimeout(() => {
+            modifiedFiles.delete(filePath);
             void this.workQueue.push({ filePath, fileSystemProviderName });
           }),
         );
       }
     };
 
-    // Set up event handlers
     watcher
       .on("add", filePath => onFileChanged("add", filePath))
       .on("change", filePath => onFileChanged("change", filePath))
       .on("unlink", filePath => onFileChanged("unlink", filePath))
       .on("error", error => this.app.serviceError(this, "Error in file watcher:", error));
 
-    return waitForAbort(signal, _ev => {
-      watcher.close();
-    });
+    this.app.serviceOutput(this, `Watching filesystem "${fileSystemProviderName}" for AI comments`);
+    return watcher;
+  }
+
+  private clearStabilityTimers(fileSystemProviderName: string): void {
+    const timers = this.stabilityTimers.get(fileSystemProviderName);
+    if (!timers) return;
+    for (const timer of timers.values()) {
+      clearTimeout(timer);
+    }
+    this.stabilityTimers.delete(fileSystemProviderName);
   }
 
   /**
@@ -174,7 +241,11 @@ export default class CodeWatchService implements TokenRingService {
   async triggerCodeModification(_content: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void> {
     const agentManager = this.app.requireService(AgentManager);
     const fileSystemService = this.app.requireService(FileSystemService);
-    const config = this.config.filesystems[fileSystemProviderName]!;
+    const config = this.config.filesystems[fileSystemProviderName];
+    if (!config) {
+      this.app.serviceError(this, `No code-watch config for filesystem "${fileSystemProviderName}"`);
+      return;
+    }
 
     let agent: Agent;
     try {

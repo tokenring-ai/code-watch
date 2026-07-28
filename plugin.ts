@@ -13,9 +13,12 @@ export default {
   displayName: "Code Watcher",
   version: packageJSON.version,
   description: packageJSON.description,
-  install(app, config) {
+  install(app) {
+    app.addServices(new CodeWatchService(app));
+  },
+  async reconfigure(app, config) {
     if (config.codewatch) {
-      app.addServices(new CodeWatchService(app, config.codewatch));
+      await app.requireService(CodeWatchService).reconfigure(config.codewatch);
     }
   },
   configSchema: packageConfigSchema,

@@ -277,7 +277,7 @@ Once complete, update the file using the file_write tool. You MUST remove any li
     const fileSystemService = this.app.requireService(FileSystemService);
     await fileSystemService.addFileToChat(filePath, agent);
 
-    const agentCommandService = agent.requireServiceByType(AgentCommandService);
+    const agentCommandService = agent.requireService(AgentCommandService);
 
     await agentCommandService.executeAgentCommand(agent, `/work ${prompt}`);
   }

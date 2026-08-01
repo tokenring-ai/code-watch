@@ -14,7 +14,7 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   install(app) {
-    app.addServices(new CodeWatchService(app));
+    app.addService(new CodeWatchService(app));
   },
   async reconfigure(app, config) {
     if (config.codewatch) {

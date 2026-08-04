@@ -1,5 +1,5 @@
 import { type Agent, AgentCommandService, AgentManager } from "@tokenring-ai/agent";
-import type TokenRingApp from "@tokenring-ai/app";
+import type WorkspaceRuntime from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
 import { ConfigurationError } from "@tokenring-ai/app/types";
 import type { FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemProvider";
@@ -42,7 +42,7 @@ export default class CodeWatchService implements TokenRingService {
   private started = false;
 
   constructor(
-    readonly app: TokenRingApp,
+    readonly app: WorkspaceRuntime,
     config?: CodeWatchConfig,
   ) {
     if (config) this.config = config;

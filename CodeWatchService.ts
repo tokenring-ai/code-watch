@@ -86,12 +86,13 @@ export default class CodeWatchService implements TokenRingService {
    */
   stop(): void {
     this.started = false;
-    this.workQueue.kill();
 
     this.watchedFilesystems.mapEntries(([name, watcher]) => {
       this.clearStabilityTimers(name);
       watcher.close();
     });
+    this.watchedFilesystems.clear();
+    this.stabilityTimers.clear();
     this.workQueue.kill();
   }
 
@@ -141,7 +142,7 @@ export default class CodeWatchService implements TokenRingService {
           setTimeout(() => {
             modifiedFiles.delete(filePath);
             void this.workQueue.push({ filePath, fileSystemProviderName });
-          }),
+          }, filesystemConfig.stabilityThreshold),
         );
       }
     };
@@ -258,19 +259,23 @@ export default class CodeWatchService implements TokenRingService {
       return;
     }
 
-    fileSystemService.setActiveFileSystem(fileSystemProviderName, agent);
-    this.app.serviceOutput(this, `Code modification triggered from ${filePath}:${lineNumber}, running a Code Modification Agent`);
-    await this.runCodeModification(
-      `
+    try {
+      fileSystemService.setActiveFileSystem(fileSystemProviderName, agent);
+      this.app.serviceOutput(this, `Code modification triggered from ${filePath}:${lineNumber}, running a Code Modification Agent`);
+      await this.runCodeModification(
+        `
 The user has edited the file ${filePath}, included above, adding instructions to the file, which they expect AI to execute.
 Look for any lines in the file marked with the tag AI!, which contain the users instructions.
 Complete the instructions in that line or in any nearby comments, using any tools available to you to complete the task.
 Once complete, update the file using the file_write tool. You MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.
 
 `.trim(),
-      filePath,
-      agent,
-    );
+        filePath,
+        agent,
+      );
+    } finally {
+      agentManager.deleteAgent(agent.id, "Code-watch modification complete");
+    }
   }
 
   async runCodeModification(prompt: string, filePath: string, agent: Agent) {

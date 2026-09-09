@@ -5,6 +5,7 @@ import type TokenRingApp from "@tokenring-ai/app";
 import createTestingApp from "@tokenring-ai/app/test/createTestingApp.test";
 import type { FileSystemProvider, FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemProvider";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
+import { FileSystemConfigSchema } from "@tokenring-ai/filesystem/schema";
 import CodeWatchService from "./CodeWatchService.ts";
 import { CodeWatchConfigSchema } from "./index.ts";
 
@@ -124,7 +125,13 @@ describe("CodeWatchService", () => {
 
     app = createTestingApp();
     mockFs = createMockProvider(files);
-    fileSystemService = new FileSystemService();
+    fileSystemService = new FileSystemService(
+      app,
+      FileSystemConfigSchema.parse({
+        agentDefaults: { provider: "local" },
+        allowedPaths: [{ path: "/repo", permission: "write" }],
+      }),
+    );
     fileSystemService.registerFileSystemProvider("local", mockFs.provider);
     app.addService(FileSystemService, fileSystemService);
 

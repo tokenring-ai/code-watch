@@ -2,9 +2,10 @@ import { type Agent, AgentCommandService, AgentManager } from "@tokenring-ai/age
 import type WorkspaceRuntime from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
 import { ConfigurationError } from "@tokenring-ai/app/types";
-import type { FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemProvider";
+import type { FileSystemProvider, FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemProvider";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
-import createIgnoreFilter from "@tokenring-ai/filesystem/util/createIgnoreFilter";
+import { topLevelRoots } from "@tokenring-ai/filesystem/util/allowedPaths";
+import { isIgnoreFile, RefreshingTreeIgnore } from "@tokenring-ai/filesystem/util/treeIgnore";
 import EnhancedMap from "@tokenring-ai/utility/map/enhancedMap";
 import EnhancedStringMap from "@tokenring-ai/utility/map/enhancedStringMap";
 import async from "async";
@@ -18,6 +19,27 @@ type FileSystemConfig = {
 };
 
 type CodeWatchConfig = z.output<typeof CodeWatchConfigSchema>;
+
+/** Fans one logical watch out over every allowed root of a provider. */
+class CompositeFileSystemWatcher implements FileSystemWatcher {
+  constructor(private readonly watchers: FileSystemWatcher[]) {}
+
+  on(event: "add" | "change" | "unlink", listener: (filePath: string) => void): this;
+  on(event: "error", listener: (error: Error) => void): this;
+  on(event: string, listener: (...args: unknown[]) => void): this;
+  on(event: string, listener: (...args: never[]) => void): this {
+    for (const watcher of this.watchers) {
+      watcher.on(event, listener as (...args: unknown[]) => void);
+    }
+    return this;
+  }
+
+  close(): void {
+    for (const watcher of this.watchers) {
+      watcher.close();
+    }
+  }
+}
 
 export default class CodeWatchService implements TokenRingService {
   readonly name = "CodeWatchService";
@@ -113,6 +135,25 @@ export default class CodeWatchService implements TokenRingService {
     });
   }
 
+  private providerIO(provider: FileSystemProvider) {
+    return {
+      readFile: async (filePath: string) => {
+        try {
+          return await provider.readFile(filePath);
+        } catch {
+          return null;
+        }
+      },
+      exists: async (filePath: string) => {
+        try {
+          return await provider.exists(filePath);
+        } catch {
+          return false;
+        }
+      },
+    };
+  }
+
   private async openWatcher(fileSystemProviderName: string, filesystemConfig: FileSystemConfig): Promise<FileSystemWatcher> {
     const fileSystemService = this.app.requireService(FileSystemService);
     const fileSystemProvider = fileSystemService.requireFileSystemProviderByName(fileSystemProviderName);
@@ -121,11 +162,28 @@ export default class CodeWatchService implements TokenRingService {
       throw new ConfigurationError(this.name, `File system provider '${fileSystemProviderName}' does not support watching`);
     }
 
-    const watcher = await fileSystemProvider.watch("./", {
-      pollInterval: filesystemConfig.pollInterval,
-      stabilityThreshold: filesystemConfig.stabilityThreshold,
-      ignoreFilter: await createIgnoreFilter(fileSystemProvider),
-    });
+    // One watcher per top-level write-allowed root; ignore rules are evaluated
+    // at event time so .gitignore edits apply while watching.
+    const roots = topLevelRoots(fileSystemService.getAllowedPaths(fileSystemProviderName).filter(entry => entry.permission === "write"));
+    if (roots.length === 0) {
+      this.app.serviceOutput(this, `No write-allowed paths for filesystem "${fileSystemProviderName}"; code-watch is idle`);
+    }
+
+    const watchers: FileSystemWatcher[] = [];
+    for (const root of roots) {
+      const treeIgnore = new RefreshingTreeIgnore(root.path, {}, this.providerIO(fileSystemProvider));
+      watchers.push(
+        await fileSystemProvider.watch(root.path, {
+          pollInterval: filesystemConfig.pollInterval,
+          stabilityThreshold: filesystemConfig.stabilityThreshold,
+          ignoreFilter: (filePath: string, isDirectory?: boolean) => {
+            if (isIgnoreFile(filePath)) treeIgnore.invalidate();
+            return treeIgnore.shouldIgnore(filePath, isDirectory);
+          },
+        }),
+      );
+    }
+    const watcher = new CompositeFileSystemWatcher(watchers);
 
     const modifiedFiles = new EnhancedMap<string, NodeJS.Timeout>();
     this.stabilityTimers.set(fileSystemProviderName, modifiedFiles);

@@ -180,7 +180,7 @@ registered with `FileSystemService`.
 
 1. `openWatcher` requires the provider by name and calls `provider.watch("./", { pollInterval,
    stabilityThreshold, ignoreFilter })`, where `ignoreFilter` is built with
-   `createIgnoreFilter(provider)` (defaults: `.git`, `node_modules`, hidden files, `*.lock`, plus
+   `TreeIgnore(provider)` (defaults: `.git`, `node_modules`, hidden files, `*.lock`, plus
    everything listed in the provider's `.gitignore` and `.aiignore`).
 2. `add` / `change` events are coalesced per path and enqueued on an `async.queue` whose worker is
    `processFileForAIComments`; `unlink` events only cancel pending work for that path; `error` events
@@ -256,7 +256,7 @@ export default {
 |---------------------------|-------------------------------------------------------------------------|
 | `@tokenring-ai/app`       | Application runtime, `TokenRingPlugin` / `TokenRingService` types, `ConfigurationError` |
 | `@tokenring-ai/agent`     | `AgentManager` (spawning agents), `AgentCommandService` (dispatching `/work`) |
-| `@tokenring-ai/filesystem`| `FileSystemService`, `FileSystemWatcher`, `createIgnoreFilter`          |
+| `@tokenring-ai/filesystem`| `FileSystemService`, `FileSystemWatcher`, `TreeIgnore`          |
 | `@tokenring-ai/utility`   | `EnhancedMap`, `EnhancedStringMap`                                      |
 | `zod`                     | Configuration schema validation                                        |
 | `async`                   | `async.queue` work queue and concurrency control                        |

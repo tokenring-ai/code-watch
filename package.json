@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "dependencies": {
     "@tokenring-ai/app": "workspace:*",
-    "zod": "^4.4.3",
+    "zod": "^4.6.7",
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/filesystem": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
@@ -24,6 +24,6 @@
   "type": "module",
   "devDependencies": {
     "typescript": "^7.0.2",
-    "@types/async": "^3.2.25"
+    "@types/async": "^3.2.26"
   }
 }

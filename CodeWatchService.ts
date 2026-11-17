@@ -1,26 +1,38 @@
-import { type Agent, AgentCommandService, AgentManager } from "@tokenring-ai/agent";
+import { type Agent, AgentManager } from "@tokenring-ai/agent";
+import { AgentEventState } from "@tokenring-ai/agent/state/agentEventState";
 import type WorkspaceRuntime from "@tokenring-ai/app";
 import type { TokenRingService } from "@tokenring-ai/app/types";
-import { ConfigurationError } from "@tokenring-ai/app/types";
-import type { FileSystemProvider, FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemProvider";
 import FileSystemService from "@tokenring-ai/filesystem/FileSystemService";
+import type { FileSystemWatcher } from "@tokenring-ai/filesystem/FileSystemTypes";
+import type HostFileSystem from "@tokenring-ai/filesystem/HostFileSystem";
 import { topLevelRoots } from "@tokenring-ai/filesystem/util/allowedPaths";
 import { isIgnoreFile, RefreshingTreeIgnore } from "@tokenring-ai/filesystem/util/treeIgnore";
 import EnhancedMap from "@tokenring-ai/utility/map/enhancedMap";
-import EnhancedStringMap from "@tokenring-ai/utility/map/enhancedStringMap";
 import async from "async";
 import type z from "zod";
 import type { CodeWatchConfigSchema } from "./index.ts";
 
-type FileSystemConfig = {
-  pollInterval: number;
-  stabilityThreshold: number;
-  agentType: string;
-};
-
 type CodeWatchConfig = z.output<typeof CodeWatchConfigSchema>;
 
-/** Fans one logical watch out over every allowed root of a provider. */
+/** A line asking for a change: a whole-line `#` or `//` comment containing `AI!`. */
+export interface AIMarker {
+  /** 1-based. */
+  line: number;
+  text: string;
+}
+
+/** The `AI!` markers in a file. Comments after code, and block comments, do not count. */
+export function findAIMarkers(text: string): AIMarker[] {
+  const markers: AIMarker[] = [];
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!.trim();
+    if ((line.startsWith("#") || line.startsWith("//")) && line.includes("AI!")) markers.push({ line: i + 1, text: line });
+  }
+  return markers;
+}
+
+/** Fans one logical watch out over every write-allowed root. */
 class CompositeFileSystemWatcher implements FileSystemWatcher {
   constructor(private readonly watchers: FileSystemWatcher[]) {}
 
@@ -45,23 +57,32 @@ export default class CodeWatchService implements TokenRingService {
   readonly name = "CodeWatchService";
   description = "Provides CodeWatch functionality that monitors files for AI comments";
 
-  private readonly workQueue: async.QueueObject<{
-    filePath: string;
-    fileSystemProviderName: string;
-  }>;
+  private readonly workQueue: async.QueueObject<{ filePath: string }>;
 
-  /** Live file watchers, keyed by filesystem provider name. */
-  private watchedFilesystems = new EnhancedStringMap<FileSystemWatcher>();
-  /** Debounce timers per filesystem provider, then per path. */
-  private stabilityTimers = new EnhancedStringMap<EnhancedMap<string, NodeJS.Timeout>>();
+  /** The live watcher, while configured and started. */
+  private watcher: FileSystemWatcher | null = null;
+  /** Debounce timers, by path. */
+  private stabilityTimers = new EnhancedMap<string, NodeJS.Timeout>();
 
-  private config: CodeWatchConfig = {
-    filesystems: {},
-    concurrency: 1,
-  };
+  /** Absent until the `codewatch` key is configured; the service is idle without it. */
+  private config: CodeWatchConfig | undefined;
 
   /** True after {@link start} has run — reconfigure only reconciles watchers once started. */
   private started = false;
+
+  /** Watcher restarts, one at a time, so a config change mid-restart can't leave a watcher open. */
+  private watcherUpdate: Promise<void> = Promise.resolve();
+  /** Counts {@link stop} calls, so a watcher that finishes opening after a stop is closed again. */
+  private stopCount = 0;
+
+  /** Files an agent is working on; their changes (the agent's own edits) are not acted on. */
+  private readonly working = new Set<string>();
+
+  /**
+   * The markers each file was last handled for. A file still showing the same markers afterwards
+   * (the agent left them in) is not handed to another agent, so a stuck marker can't loop forever.
+   */
+  private readonly handledMarkers = new Map<string, string>();
 
   constructor(
     readonly app: WorkspaceRuntime,
@@ -69,38 +90,36 @@ export default class CodeWatchService implements TokenRingService {
   ) {
     if (config) this.config = config;
 
-    this.workQueue = async.queue<{
-      filePath: string;
-      fileSystemProviderName: string;
-    }>(async (task, callback) => {
+    this.workQueue = async.queue<{ filePath: string }>(async (task, callback) => {
       try {
         await this.processFileForAIComments(task);
       } catch (err) {
         app.serviceError(this, `Error processing file ${task.filePath}:`, err);
       }
       callback();
-    }, this.config.concurrency);
+    }, this.config?.concurrency ?? 1);
   }
 
   /**
-   * Applies package config. Watchers are created in {@link start} (after filesystem
-   * providers have been registered); later reconfigures re-reconcile live watchers.
+   * Applies package config. Watchers are created in {@link start}; later
+   * reconfigures re-reconcile live watchers.
    */
-  async reconfigure(config: CodeWatchConfig): Promise<void> {
+  async reconfigure(config: CodeWatchConfig | undefined): Promise<void> {
+    // Without config (the `codewatch` key was removed) the service is idle: the restart below just closes the watcher.
     this.config = config;
-    this.workQueue.concurrency = config.concurrency;
+    if (config) this.workQueue.concurrency = config.concurrency;
     if (this.started) {
-      await this.reconcileWatchers();
+      await this.restartWatcher();
     }
   }
 
   /**
-   * Opens watchers for every configured filesystem. Called after all plugins
-   * have reconfigured so filesystem providers are available.
+   * Opens watchers for every configured watch. Called after all plugins have
+   * reconfigured so the filesystem allow-list is final.
    */
   async start(): Promise<void> {
     this.started = true;
-    await this.reconcileWatchers();
+    await this.restartWatcher();
   }
 
   /**
@@ -108,34 +127,37 @@ export default class CodeWatchService implements TokenRingService {
    */
   stop(): void {
     this.started = false;
+    this.stopCount++;
 
-    this.watchedFilesystems.mapEntries(([name, watcher]) => {
-      this.clearStabilityTimers(name);
-      watcher.close();
-    });
-    this.watchedFilesystems.clear();
-    this.stabilityTimers.clear();
+    this.closeWatcher();
     this.workQueue.kill();
   }
 
-  private async reconcileWatchers(): Promise<void> {
-    await this.watchedFilesystems.reconcileAgainstAsync(this.config.filesystems, {
-      creating: async (name, filesystemConfig) => this.openWatcher(name, filesystemConfig),
-      deleting: async (name, watcher) => {
-        this.clearStabilityTimers(name);
+  private restartWatcher(): Promise<void> {
+    const update = this.watcherUpdate.then(async () => {
+      this.closeWatcher();
+      if (!this.config || !this.started) return;
+      const stopCount = this.stopCount;
+      const watcher = await this.openWatcher(this.config);
+      // Stopped while the watcher was opening.
+      if (this.stopCount !== stopCount) {
         watcher.close();
-      },
-      updating: async (name, watcher, filesystemConfig) => {
-        this.clearStabilityTimers(name);
-        watcher.close();
-        const next = await this.openWatcher(name, filesystemConfig);
-        this.watchedFilesystems.set(name, next);
-        return next;
-      },
+        return;
+      }
+      this.watcher = watcher;
     });
+    this.watcherUpdate = update.catch(() => {});
+    return update;
   }
 
-  private providerIO(provider: FileSystemProvider) {
+  private closeWatcher(): void {
+    for (const timer of this.stabilityTimers.values()) clearTimeout(timer);
+    this.stabilityTimers.clear();
+    this.watcher?.close();
+    this.watcher = null;
+  }
+
+  private hostIO(provider: HostFileSystem) {
     return {
       readFile: async (filePath: string) => {
         try {
@@ -154,28 +176,24 @@ export default class CodeWatchService implements TokenRingService {
     };
   }
 
-  private async openWatcher(fileSystemProviderName: string, filesystemConfig: FileSystemConfig): Promise<FileSystemWatcher> {
+  private async openWatcher(config: CodeWatchConfig): Promise<FileSystemWatcher> {
     const fileSystemService = this.app.requireService(FileSystemService);
-    const fileSystemProvider = fileSystemService.requireFileSystemProviderByName(fileSystemProviderName);
-
-    if (!fileSystemProvider.watch) {
-      throw new ConfigurationError(this.name, `File system provider '${fileSystemProviderName}' does not support watching`);
-    }
+    const host = fileSystemService.host;
 
     // One watcher per top-level write-allowed root; ignore rules are evaluated
     // at event time so .gitignore edits apply while watching.
-    const roots = topLevelRoots(fileSystemService.getAllowedPaths(fileSystemProviderName).filter(entry => entry.permission === "write"));
+    const roots = topLevelRoots(fileSystemService.getAllowedPaths().filter(entry => entry.permission === "write"));
     if (roots.length === 0) {
-      this.app.serviceOutput(this, `No write-allowed paths for filesystem "${fileSystemProviderName}"; code-watch is idle`);
+      this.app.serviceOutput(this, "No write-allowed paths to watch; code-watch is idle");
     }
 
     const watchers: FileSystemWatcher[] = [];
     for (const root of roots) {
-      const treeIgnore = new RefreshingTreeIgnore(root.path, {}, this.providerIO(fileSystemProvider));
+      const treeIgnore = new RefreshingTreeIgnore(root.path, {}, this.hostIO(host));
       watchers.push(
-        await fileSystemProvider.watch(root.path, {
-          pollInterval: filesystemConfig.pollInterval,
-          stabilityThreshold: filesystemConfig.stabilityThreshold,
+        await host.watch(root.path, {
+          pollInterval: config.pollInterval,
+          stabilityThreshold: config.stabilityThreshold,
           ignoreFilter: (filePath: string, isDirectory?: boolean) => {
             if (isIgnoreFile(filePath)) treeIgnore.invalidate();
             return treeIgnore.shouldIgnore(filePath, isDirectory);
@@ -185,8 +203,7 @@ export default class CodeWatchService implements TokenRingService {
     }
     const watcher = new CompositeFileSystemWatcher(watchers);
 
-    const modifiedFiles = new EnhancedMap<string, NodeJS.Timeout>();
-    this.stabilityTimers.set(fileSystemProviderName, modifiedFiles);
+    const modifiedFiles = this.stabilityTimers;
 
     const onFileChanged = (eventType: string, filePath: string) => {
       if (modifiedFiles.has(filePath)) {
@@ -199,8 +216,8 @@ export default class CodeWatchService implements TokenRingService {
           filePath,
           setTimeout(() => {
             modifiedFiles.delete(filePath);
-            void this.workQueue.push({ filePath, fileSystemProviderName });
-          }, filesystemConfig.stabilityThreshold),
+            void this.workQueue.push({ filePath });
+          }, config.stabilityThreshold),
         );
       }
     };
@@ -211,137 +228,80 @@ export default class CodeWatchService implements TokenRingService {
       .on("unlink", filePath => onFileChanged("unlink", filePath))
       .on("error", error => this.app.serviceError(this, "Error in file watcher:", error));
 
-    this.app.serviceOutput(this, `Watching filesystem "${fileSystemProviderName}" for AI comments`);
+    this.app.serviceOutput(this, `Watching ${roots.map(root => root.path).join(", ")} for AI comments`);
     return watcher;
   }
 
-  private clearStabilityTimers(fileSystemProviderName: string): void {
-    const timers = this.stabilityTimers.get(fileSystemProviderName);
-    if (!timers) return;
-    for (const timer of timers.values()) {
-      clearTimeout(timer);
-    }
-    this.stabilityTimers.delete(fileSystemProviderName);
-  }
+  /** Reads a changed file and, when it has new `AI!` markers, has an agent carry them out. */
+  async processFileForAIComments({ filePath }: { filePath: string }): Promise<void> {
+    // An agent is already on it; this change is most likely its own edit.
+    if (this.working.has(filePath)) return;
 
-  /**
-   * Process a file to look for AI comments
-   */
-  async processFileForAIComments({ filePath, fileSystemProviderName }: { filePath: string; fileSystemProviderName: string }): Promise<void> {
     const fileSystemService = this.app.requireService(FileSystemService);
-    const fileSystemProvider = fileSystemService.requireFileSystemProviderByName(fileSystemProviderName);
-
-    const text = await fileSystemProvider.readFile(filePath);
+    const text = await fileSystemService.host.readFile(filePath);
     if (!text) return;
 
-    const lines = text.toString("utf-8").split("\n");
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!.trim();
-
-      // Check for Python/shell style comments (# ...)
-      if (line.startsWith("#")) {
-        await this.checkAndTriggerAIAction(line, filePath, i + 1, fileSystemProviderName);
-      }
-      // Check for C-style comments (// ...)
-      else if (line.startsWith("//")) {
-        await this.checkAndTriggerAIAction(line, filePath, i + 1, fileSystemProviderName);
-      }
-    }
-  }
-
-  /**
-   * Check if a comment line contains AI triggers and handle them
-   * @param line - The comment line (already trimmed)
-   * @param filePath - Path to the file containing the comment
-   * @param lineNumber - Line number in the file
-   * @param fileSystemProviderName
-   */
-  async checkAndTriggerAIAction(line: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void> {
-    // Check for AI! triggers in the line
-    // Pattern 1: Line starts with # AI or // AI (comment at beginning of line)
-    const startsWithAIPattern = line.startsWith("# AI") || line.startsWith("// AI");
-    // Pattern 2: Line contains AI! anywhere (for inline comments or end-of-line triggers)
-    const containsAIExclamation = line.includes("AI!");
-
-    if (startsWithAIPattern || containsAIExclamation) {
-      await this.handleAIComment(line, filePath, lineNumber, fileSystemProviderName);
-    }
-  }
-
-  /**
-   * Handle an AI comment based on its type
-   * @param commentLine - The comment line
-   * @param filePath - Path to the file containing the comment
-   * @param lineNumber - Line number in the file
-   * @param fileSystemProviderName
-   */
-  async handleAIComment(commentLine: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void> {
-    // Extract the actual comment content (remove the comment marker)
-    let content = commentLine.trim();
-    if (commentLine.startsWith("# ")) {
-      content = commentLine.substring(2);
-    } else if (commentLine.startsWith("// ")) {
-      content = commentLine.substring(3);
-    }
-
-    if (content.includes("AI!")) {
-      await this.triggerCodeModification(content, filePath, lineNumber, fileSystemProviderName);
-    }
-  }
-
-  /**
-   * Trigger code modification based on AI! comment
-   * @param _content - Content of the comment
-   * @param filePath - Path to the file containing the comment
-   * @param lineNumber - Line number in the file
-   * @param fileSystemProviderName
-   */
-  async triggerCodeModification(_content: string, filePath: string, lineNumber: number, fileSystemProviderName: string): Promise<void> {
-    const agentManager = this.app.requireService(AgentManager);
-    const fileSystemService = this.app.requireService(FileSystemService);
-    const config = this.config.filesystems[fileSystemProviderName];
-    if (!config) {
-      this.app.serviceError(this, `No code-watch config for filesystem "${fileSystemProviderName}"`);
+    const markers = findAIMarkers(text.toString("utf-8"));
+    if (markers.length === 0) {
+      this.handledMarkers.delete(filePath);
       return;
     }
+    const signature = markers.map(marker => marker.text).join("\n");
+    if (this.handledMarkers.get(filePath) === signature) {
+      this.app.serviceOutput(this, `${filePath} still has AI! markers an agent was already asked to handle; edit them to try again`);
+      return;
+    }
+    this.handledMarkers.set(filePath, signature);
+    await this.triggerCodeModification(filePath, markers);
+  }
+
+  /** Starts one agent for the file, however many markers it has, and deletes the agent when it is done. */
+  async triggerCodeModification(filePath: string, markers: AIMarker[]): Promise<void> {
+    const config = this.config;
+    if (!config) return;
+    const agentManager = this.app.requireService(AgentManager);
 
     let agent: Agent;
     try {
-      agent = agentManager.spawnAgent({
-        agentType: config.agentType,
-        headless: true,
-      });
+      agent = agentManager.spawnAgent({ agentType: config.agentType, answerTimeoutSeconds: 0 });
     } catch (error: unknown) {
-      this.app.serviceError(this, `Failed to spawn agent for code modification at ${filePath}:${lineNumber}:`, error);
+      this.app.serviceError(this, `Failed to spawn agent for code modification in ${filePath}:`, error);
       return;
     }
 
+    const where = markers.map(marker => `${filePath}:${marker.line}`).join(", ");
+    this.working.add(filePath);
     try {
-      fileSystemService.setActiveFileSystem(fileSystemProviderName, agent);
-      this.app.serviceOutput(this, `Code modification triggered from ${filePath}:${lineNumber}, running a Code Modification Agent`);
-      await this.runCodeModification(
-        `
+      this.app.serviceOutput(this, `Code modification triggered from ${where}, running a Code Modification Agent`);
+      const prompt = `
 The user has edited the file ${filePath}, included above, adding instructions to the file, which they expect AI to execute.
-Look for any lines in the file marked with the tag AI!, which contain the users instructions.
-Complete the instructions in that line or in any nearby comments, using any tools available to you to complete the task.
-Once complete, update the file using the file_write tool. You MUST remove any lines that end with AI!. It is a critical failure to leave these lines in the file.
-
-`.trim(),
-        filePath,
-        agent,
-      );
+The instructions are in the comments marked AI!:
+${markers.map(marker => `- line ${marker.line}: ${marker.text}`).join("\n")}
+Complete those instructions, and any in nearby comments, using any tools available to you.
+Once complete, update the file. You MUST remove every comment line containing AI!. It is a critical failure to leave these lines in the file.
+`.trim();
+      const result = await this.runCodeModification(prompt, filePath, agent);
+      if (result.status !== "success") {
+        this.app.serviceError(this, `Code modification for ${where} did not finish (${result.status}): ${result.message}`);
+      }
     } finally {
+      this.working.delete(filePath);
       agentManager.deleteAgent(agent.id, "Code-watch modification complete");
     }
   }
 
-  async runCodeModification(prompt: string, filePath: string, agent: Agent) {
+  /** Gives the agent the file and the instructions as a chat message, and waits for its reply. */
+  async runCodeModification(prompt: string, filePath: string, agent: Agent): Promise<{ status: "success" | "error" | "cancelled"; message: string }> {
     const fileSystemService = this.app.requireService(FileSystemService);
     await fileSystemService.addFileToChat(filePath, agent);
 
-    const agentCommandService = agent.requireService(AgentCommandService);
-
-    await agentCommandService.executeAgentCommand(agent, `/work ${prompt}`);
+    const cursor = agent.getState(AgentEventState).getEventCursorFromCurrentPosition();
+    const requestId = agent.handleInput({ from: "Code watch", message: prompt });
+    for await (const state of agent.subscribeStateAsync(AgentEventState, agent.agentShutdownSignal)) {
+      for (const event of state.yieldEventsByCursor(cursor)) {
+        if (event.type === "agent.response" && event.requestId === requestId) return { status: event.status, message: event.message };
+      }
+    }
+    return { status: "cancelled", message: "The agent stopped before it finished." };
   }
 }

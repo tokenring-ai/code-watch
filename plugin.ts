@@ -17,9 +17,8 @@ export default {
     app.addService(CodeWatchService, new CodeWatchService(app));
   },
   async reconfigure(app, config) {
-    if (config.codewatch) {
-      await app.requireService(CodeWatchService).reconfigure(config.codewatch);
-    }
+    // Also when the key was removed, so the watcher stops.
+    await app.requireService(CodeWatchService).reconfigure(config.codewatch);
   },
   configSchema: packageConfigSchema,
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;
